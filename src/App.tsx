@@ -4,9 +4,12 @@ import {
   createUserWithEmailAndPassword, 
   signOut, 
   onAuthStateChanged,
-  User
+  User,
+  GoogleAuthProvider,
+  signInWithPopup
 } from 'firebase/auth';
-import { auth } from './firebase';
+import { onSnapshot, doc, collection, query, orderBy } from 'firebase/firestore';
+import { auth, db } from './firebase';
 import { DbService } from './services/db';
 import { TripRecord, ServiceRecord, VehicleInfo } from './types';
 
@@ -44,82 +47,6 @@ import {
   Sparkles,
   Info
 } from 'lucide-react';
-
-// Prepopulated Elegant Seed Data if local storage is clean
-const SEED_VEHICLE: VehicleInfo = {
-  id: 'v1',
-  brand: 'Honda',
-  model: 'HR-V 1.5 SE',
-  licensePlate: 'B 1234 RFA',
-  currentOdometer: 24500,
-  fuelType: 'Pertamax (Oktan 92)'
-};
-
-const SEED_TRIPS: TripRecord[] = [
-  {
-    id: 't1',
-    date: '2026-06-25',
-    origin: 'Jakarta (Monas)',
-    destination: 'Bandung (Alun-Alun)',
-    distance: 151,
-    duration: 140,
-    fuelCost: 180000,
-    fuelLiters: 13.8,
-    notes: 'Liburan akhir pekan ke Bandung bersama keluarga.',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 't2',
-    date: '2026-06-12',
-    origin: 'Bandung (Alun-Alun)',
-    destination: 'Jakarta (Monas)',
-    distance: 151,
-    duration: 135,
-    fuelCost: 180000,
-    fuelLiters: 13.5,
-    notes: 'Perjalanan pulang, arus lalu lintas lancar.',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 't3',
-    date: '2026-05-30',
-    origin: 'Surabaya (Tugu Pahlawan)',
-    destination: 'Malang (Alun-Alun)',
-    distance: 92,
-    duration: 85,
-    fuelCost: 110000,
-    fuelLiters: 8.4,
-    notes: 'Kunjungan kerja ke Malang.',
-    createdAt: new Date().toISOString()
-  }
-];
-
-const SEED_SERVICES: ServiceRecord[] = [
-  {
-    id: 's1',
-    date: '2026-06-20',
-    serviceType: 'Oli Mesin',
-    cost: 450000,
-    currentOdometer: 24000,
-    nextServiceOdometer: 29000,
-    nextServiceDate: '2026-12-20',
-    notes: 'Shell Helix Astra 5W-30 + Penggantian filter oli.',
-    status: 'Selesai',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 's2',
-    date: '2026-06-28',
-    serviceType: 'Servis Rem',
-    cost: 320000,
-    currentOdometer: 24500,
-    nextServiceOdometer: 24800,
-    nextServiceDate: '2026-07-15',
-    notes: 'Bunyi decit pada kampas rem depan kiri. Perlu diganti segera.',
-    status: 'Mendatang',
-    createdAt: new Date().toISOString()
-  }
-];
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -217,10 +144,20 @@ export default function App() {
     };
   }, [dbService]);
 
-  // Auth State Listener
+  // Auth State Listener & Real-time Firestore Listeners
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    let unsubVehicle: (() => void) | null = null;
+    let unsubTrips: (() => void) | null = null;
+    let unsubServices: (() => void) | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       setLoading(true);
+
+      // Clean up previous listeners if any
+      if (unsubVehicle) { unsubVehicle(); unsubVehicle = null; }
+      if (unsubTrips) { unsubTrips(); unsubTrips = null; }
+      if (unsubServices) { unsubServices(); unsubServices = null; }
+
       if (firebaseUser) {
         setUser(firebaseUser);
         dbService.setUserId(firebaseUser.uid);
@@ -230,18 +167,76 @@ export default function App() {
           setIsBiometricAvailableForUser(dbService.getBiometricRegistration(firebaseUser.email));
         }
 
-        // Load data from Firestore/Local storage
-        refreshAllData().finally(() => setLoading(false));
+        // Wait for offline sync to complete before subscribing to avoid empty cloud overwriting local data
+        dbService.syncLocalToFirebase().then(() => {
+          if (auth.currentUser?.uid !== firebaseUser.uid) return;
+
+          // 1. Subscribe to Vehicle info in real-time
+          const vehicleDocRef = doc(db, 'users', firebaseUser.uid, 'vehicle', 'info');
+          unsubVehicle = onSnapshot(vehicleDocRef, (snapshot) => {
+            if (snapshot.exists()) {
+              const data = snapshot.data() as VehicleInfo;
+              setVehicle(data);
+              localStorage.setItem('mobil_tracker_vehicle', JSON.stringify(data));
+              setEditBrand(data.brand);
+              setEditModel(data.model);
+              setEditPlate(data.licensePlate);
+              setEditOdo(data.currentOdometer);
+              setEditFuel(data.fuelType);
+            } else {
+              setVehicle(null);
+            }
+          }, (error) => {
+            console.warn('Vehicle snapshot listener error', error);
+          });
+
+          // 2. Subscribe to Trips collection in real-time
+          const tripsCollectionRef = collection(db, 'users', firebaseUser.uid, 'trips');
+          const tripsQuery = query(tripsCollectionRef, orderBy('date', 'desc'));
+          unsubTrips = onSnapshot(tripsQuery, (snapshot) => {
+            const tripsList: TripRecord[] = [];
+            snapshot.forEach((doc) => {
+              tripsList.push({ id: doc.id, ...doc.data() } as TripRecord);
+            });
+            setTrips(tripsList);
+            localStorage.setItem('mobil_tracker_trips', JSON.stringify(tripsList));
+          }, (error) => {
+            console.warn('Trips snapshot listener error', error);
+          });
+
+          // 3. Subscribe to Services collection in real-time
+          const servicesCollectionRef = collection(db, 'users', firebaseUser.uid, 'services');
+          const servicesQuery = query(servicesCollectionRef, orderBy('date', 'desc'));
+          unsubServices = onSnapshot(servicesQuery, (snapshot) => {
+            const servicesList: ServiceRecord[] = [];
+            snapshot.forEach((doc) => {
+              servicesList.push({ id: doc.id, ...doc.data() } as ServiceRecord);
+            });
+            setServices(servicesList);
+            localStorage.setItem('mobil_tracker_services', JSON.stringify(servicesList));
+          }, (error) => {
+            console.warn('Services snapshot listener error', error);
+          });
+        }).finally(() => {
+          if (auth.currentUser?.uid === firebaseUser.uid) {
+            setLoading(false);
+          }
+        });
       } else {
         setUser(null);
         dbService.setUserId(null);
         setIsBiometricAvailableForUser(false);
-        // Load offline demo/mock data
+        // Load offline cached data without forced mock seeding
         loadOfflineSeedData().finally(() => setLoading(false));
       }
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribeAuth();
+      if (unsubVehicle) unsubVehicle();
+      if (unsubTrips) unsubTrips();
+      if (unsubServices) unsubServices();
+    };
   }, [dbService]);
 
   // Set up syncing state updates
@@ -316,38 +311,24 @@ export default function App() {
   }, [vehicle, services]);
 
   const loadOfflineSeedData = async () => {
-    // Check if we have items stored in localStorage already
-    const localTrips = localStorage.getItem('mobil_tracker_trips');
-    const localServices = localStorage.getItem('mobil_tracker_services');
-    const localVehicle = localStorage.getItem('mobil_tracker_vehicle');
-
-    if (!localTrips && !localServices && !localVehicle) {
-      // Seed default Indonesia HR-V data
-      localStorage.setItem('mobil_tracker_vehicle', JSON.stringify(SEED_VEHICLE));
-      localStorage.setItem('mobil_tracker_trips', JSON.stringify(SEED_TRIPS));
-      localStorage.setItem('mobil_tracker_services', JSON.stringify(SEED_SERVICES));
-      setVehicle(SEED_VEHICLE);
-      setTrips(SEED_TRIPS);
-      setServices(SEED_SERVICES);
-      setEditBrand(SEED_VEHICLE.brand);
-      setEditModel(SEED_VEHICLE.model);
-      setEditPlate(SEED_VEHICLE.licensePlate);
-      setEditOdo(SEED_VEHICLE.currentOdometer);
-      setEditFuel(SEED_VEHICLE.fuelType);
+    const v = await dbService.getVehicle();
+    const t = await dbService.getTrips();
+    const s = await dbService.getServices();
+    setVehicle(v);
+    setTrips(t);
+    setServices(s);
+    if (v) {
+      setEditBrand(v.brand);
+      setEditModel(v.model);
+      setEditPlate(v.licensePlate);
+      setEditOdo(v.currentOdometer);
+      setEditFuel(v.fuelType);
     } else {
-      const v = await dbService.getVehicle();
-      const t = await dbService.getTrips();
-      const s = await dbService.getServices();
-      setVehicle(v);
-      setTrips(t);
-      setServices(s);
-      if (v) {
-        setEditBrand(v.brand);
-        setEditModel(v.model);
-        setEditPlate(v.licensePlate);
-        setEditOdo(v.currentOdometer);
-        setEditFuel(v.fuelType);
-      }
+      setEditBrand('');
+      setEditModel('');
+      setEditPlate('');
+      setEditOdo(0);
+      setEditFuel('Pertamax (Oktan 92)');
     }
   };
 
@@ -400,6 +381,25 @@ export default function App() {
         setAuthError('Email sudah terdaftar.');
       } else {
         setAuthError(e.message || 'Terjadi kesalahan sistem.');
+      }
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setAuthError('');
+    setAuthSuccess('');
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+      setAuthSuccess('Berhasil masuk dengan akun Google!');
+    } catch (e: any) {
+      console.error(e);
+      if (e.code === 'auth/popup-closed-by-user') {
+        setAuthError('Proses masuk dibatalkan oleh pengguna.');
+      } else if (e.code === 'auth/blocked-by-popup-toggler') {
+        setAuthError('Pop-up diblokir oleh browser. Harap izinkan pop-up untuk situs ini.');
+      } else {
+        setAuthError(e.message || 'Gagal masuk dengan akun Google.');
       }
     }
   };
@@ -587,6 +587,207 @@ export default function App() {
       status: updatedStatus
     });
   };
+
+  if (loading) {
+    return (
+      <div className={`min-h-screen ${darkMode ? 'dark bg-slate-950 text-slate-100' : 'bg-[#f7f9fa] text-slate-800'} flex flex-col items-center justify-center font-sans transition-colors duration-200`}>
+        <div className="text-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#0194f3] mx-auto"></div>
+          <p className="text-sm font-semibold text-gray-500 dark:text-slate-400 animate-pulse">Menghubungkan ke DemorAuto Cloud...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className={`min-h-screen ${darkMode ? 'dark bg-slate-950 text-slate-100' : 'bg-[#f7f9fa] text-slate-800'} flex flex-col justify-between font-sans transition-colors duration-200`}>
+        {/* Top bar for dark mode toggle only */}
+        <div className="p-4 flex justify-end">
+          <button
+            id="theme-toggle-btn-auth"
+            onClick={() => {
+              setDarkMode(!darkMode);
+              localStorage.setItem('theme', !darkMode ? 'dark' : 'light');
+            }}
+            className="p-1.5 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg text-gray-500 dark:text-slate-400 transition"
+          >
+            {darkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-600" />}
+          </button>
+        </div>
+
+        {/* Beautiful Centered Card */}
+        <div className="flex-1 flex flex-col items-center justify-center p-4">
+          <div className="max-w-md w-full bg-white dark:bg-slate-900 rounded-2xl p-8 border border-gray-100 dark:border-slate-800 shadow-xl space-y-6">
+            
+            {/* Logo brand */}
+            <div className="text-center space-y-2">
+              <div className="inline-block p-3 bg-[#0194f3]/10 dark:bg-[#0194f3]/20 rounded-2xl mb-2">
+                <Car className="w-10 h-10 text-[#0194f3] stroke-[2.5]" />
+              </div>
+              <div className="flex items-center justify-center gap-1.5">
+                <span className="font-extrabold text-3xl tracking-tight leading-none uppercase text-slate-900 dark:text-white">DEMOR</span>
+                <span className="bg-[#ff5e1f] text-white text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md tracking-wider leading-none shadow-sm shadow-orange-700/30">
+                  AUTO
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-slate-400 font-medium">Sistem Informasi Armada Mobil Mandiri & Servis Rutin</p>
+            </div>
+
+            {/* Error & Success Alert */}
+            {authError && (
+              <div className="p-3 bg-red-50 dark:bg-red-950/20 text-red-600 border border-red-100 dark:border-red-900/40 rounded-xl text-xs font-semibold">
+                ⚠️ {authError}
+              </div>
+            )}
+            {authSuccess && (
+              <div className="p-3 bg-green-50 dark:bg-green-950/20 text-green-600 border border-green-100 dark:border-green-900/40 rounded-xl text-xs font-semibold">
+                ✅ {authSuccess}
+              </div>
+            )}
+
+            {/* Form */}
+            <form onSubmit={handleAuthSubmit} className="space-y-4 text-xs text-left">
+              {isRegistering && (
+                <div>
+                  <label className="block text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider text-[10px] mb-1.5">Nama Lengkap</label>
+                  <input
+                    id="auth-name-input-mandatory"
+                    type="text"
+                    required
+                    placeholder="e.g. Rifki Andrean"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    className="w-full py-3 px-4 bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0194f3] text-sm text-slate-800 dark:text-slate-100"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider text-[10px] mb-1.5">Email Pengemudi</label>
+                <input
+                  id="auth-email-input-mandatory"
+                  type="email"
+                  required
+                  placeholder="nama@email.com"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setIsBiometricAvailableForUser(dbService.getBiometricRegistration(e.target.value));
+                  }}
+                  className="w-full py-3 px-4 bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0194f3] text-sm text-slate-800 dark:text-slate-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider text-[10px] mb-1.5">Kata Sandi</label>
+                <input
+                  id="auth-password-input-mandatory"
+                  type="password"
+                  required
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full py-3 px-4 bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0194f3] text-sm text-slate-800 dark:text-slate-100"
+                />
+              </div>
+
+              <div className="flex gap-2.5 pt-3">
+                {isBiometricAvailableForUser && (
+                  <button
+                    id="biometric-login-trigger-mandatory"
+                    type="button"
+                    onClick={() => {
+                      setBiometricMode('login');
+                      setShowBiometricOverlay(true);
+                    }}
+                    className="p-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 rounded-xl transition flex items-center justify-center"
+                    title="Masuk via Sidik Jari"
+                  >
+                    <Fingerprint className="w-5 h-5 text-[#0194f3]" />
+                  </button>
+                )}
+
+                <button
+                  id="auth-submit-btn-mandatory"
+                  type="submit"
+                  className="flex-1 py-3 px-4 bg-[#0194f3] hover:bg-[#007cd1] text-white rounded-xl font-bold transition text-sm flex items-center justify-center gap-2 shadow-md shadow-blue-500/15"
+                >
+                  <LogIn className="w-4 h-4" />
+                  {isRegistering ? 'Daftar Sekarang' : 'Masuk Dashboard'}
+                </button>
+              </div>
+            </form>
+
+            {/* Divider and Google Sign-in */}
+            <div className="relative flex py-1 items-center">
+              <div className="flex-grow border-t border-gray-200 dark:border-slate-800"></div>
+              <span className="flex-shrink mx-3 text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider">Atau</span>
+              <div className="flex-grow border-t border-gray-200 dark:border-slate-800"></div>
+            </div>
+
+            <button
+              id="google-auth-btn-mandatory"
+              type="button"
+              onClick={handleGoogleLogin}
+              className="w-full py-2.5 px-4 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 border border-gray-200 dark:border-slate-700 rounded-xl font-semibold transition text-xs flex items-center justify-center gap-2.5 shadow-sm"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                />
+              </svg>
+              Masuk dengan Google
+            </button>
+
+            {/* Toggle Login / Register */}
+            <div className="pt-2 border-t border-gray-100 dark:border-slate-800 text-center">
+              <button
+                id="toggle-register-btn-mandatory"
+                type="button"
+                onClick={() => {
+                  setIsRegistering(!isRegistering);
+                  setAuthError('');
+                  setAuthSuccess('');
+                }}
+                className="text-xs text-[#0194f3] hover:underline font-semibold"
+              >
+                {isRegistering ? 'Sudah punya akun? Masuk disini' : 'Belum punya akun? Daftar disini'}
+              </button>
+            </div>
+
+          </div>
+        </div>
+
+        {/* Elegant Footer */}
+        <div className="p-4 text-center text-[11px] text-gray-400 dark:text-slate-500">
+          <p>© 2026 demorauto. Semua data tersinkronisasi cloud secara aman.</p>
+        </div>
+
+        {showBiometricOverlay && (
+          <BiometricAuth
+            email={email}
+            mode={biometricMode}
+            onSuccess={handleBiometricSuccess}
+            onCancel={() => setShowBiometricOverlay(false)}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#f7f9fa] dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">

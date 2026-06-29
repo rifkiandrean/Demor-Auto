@@ -48,11 +48,7 @@ export class DbService {
   }
 
   setUserId(userId: string | null) {
-    const prevId = this.userId;
     this.userId = userId;
-    if (userId && prevId !== userId) {
-      this.syncLocalToFirebase();
-    }
   }
 
   setOnSync(callback: () => void) {
