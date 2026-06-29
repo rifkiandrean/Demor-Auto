@@ -8,8 +8,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup
 } from 'firebase/auth';
-import { onSnapshot, doc, collection, query, orderBy } from 'firebase/firestore';
-import { auth, db } from './firebase';
+import { auth } from './firebase';
 import { DbService } from './services/db';
 import { TripRecord, ServiceRecord, VehicleInfo } from './types';
 
@@ -63,6 +62,7 @@ export default function App() {
   
   // App state
   const [activeTab, setActiveTab] = useState<'home' | 'trips' | 'services' | 'reports' | 'settings'>('home');
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [vehicle, setVehicle] = useState<VehicleInfo | null>(null);
   const [trips, setTrips] = useState<TripRecord[]>([]);
   const [services, setServices] = useState<ServiceRecord[]>([]);
@@ -147,19 +147,10 @@ export default function App() {
     };
   }, [dbService]);
 
-  // Auth State Listener & Real-time Firestore Listeners
+  // Auth State Listener
   useEffect(() => {
-    let unsubVehicle: (() => void) | null = null;
-    let unsubTrips: (() => void) | null = null;
-    let unsubServices: (() => void) | null = null;
-
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       setLoading(true);
-
-      // Clean up previous listeners if any
-      if (unsubVehicle) { unsubVehicle(); unsubVehicle = null; }
-      if (unsubTrips) { unsubTrips(); unsubTrips = null; }
-      if (unsubServices) { unsubServices(); unsubServices = null; }
 
       if (firebaseUser) {
         setUser(firebaseUser);
@@ -170,84 +161,23 @@ export default function App() {
           setIsBiometricAvailableForUser(dbService.getBiometricRegistration(firebaseUser.email));
         }
 
-        // Wait for offline sync to complete before subscribing to avoid empty cloud overwriting local data
-        dbService.syncLocalToFirebase().then(() => {
+        // Wait for offline sync first (if token exists) and refresh
+        dbService.syncLocalToSheets().then(() => {
           if (auth.currentUser?.uid !== firebaseUser.uid) return;
-
-          // 1. Subscribe to Vehicle info in real-time
-          const vehicleDocRef = doc(db, 'users', firebaseUser.uid, 'vehicle', 'info');
-          unsubVehicle = onSnapshot(vehicleDocRef, (snapshot) => {
-            if (snapshot.exists()) {
-              const data = snapshot.data() as VehicleInfo;
-              setVehicle(data);
-              localStorage.setItem('mobil_tracker_vehicle', JSON.stringify(data));
-              setEditBrand(data.brand);
-              setEditModel(data.model);
-              setEditPlate(data.licensePlate);
-              setEditOdo(data.currentOdometer);
-              setEditFuel(data.fuelType);
-              setEditOilInterval(data.oilInterval || 5000);
-              setEditServiceInterval(data.serviceInterval || 10000);
-            } else {
-              const defaultVehicle: VehicleInfo = {
-                id: 'info',
-                brand: 'Honda',
-                model: 'HR-V 1.5 SE',
-                licensePlate: 'B 1234 RFA',
-                currentOdometer: 24500,
-                fuelType: 'Pertamax',
-                oilInterval: 5000,
-                serviceInterval: 10000
-              };
-              dbService.saveVehicle(defaultVehicle);
-              setVehicle(defaultVehicle);
-              setEditBrand(defaultVehicle.brand);
-              setEditModel(defaultVehicle.model);
-              setEditPlate(defaultVehicle.licensePlate);
-              setEditOdo(defaultVehicle.currentOdometer);
-              setEditFuel(defaultVehicle.fuelType);
-              setEditOilInterval(defaultVehicle.oilInterval || 5000);
-              setEditServiceInterval(defaultVehicle.serviceInterval || 10000);
-            }
-          }, (error) => {
-            console.warn('Vehicle snapshot listener error', error);
-          });
-
-          // 2. Subscribe to Trips collection in real-time
-          const tripsCollectionRef = collection(db, 'users', firebaseUser.uid, 'trips');
-          const tripsQuery = query(tripsCollectionRef, orderBy('date', 'desc'));
-          unsubTrips = onSnapshot(tripsQuery, (snapshot) => {
-            const tripsList: TripRecord[] = [];
-            snapshot.forEach((doc) => {
-              tripsList.push({ id: doc.id, ...doc.data() } as TripRecord);
-            });
-            setTrips(tripsList);
-            localStorage.setItem('mobil_tracker_trips', JSON.stringify(tripsList));
-          }, (error) => {
-            console.warn('Trips snapshot listener error', error);
-          });
-
-          // 3. Subscribe to Services collection in real-time
-          const servicesCollectionRef = collection(db, 'users', firebaseUser.uid, 'services');
-          const servicesQuery = query(servicesCollectionRef, orderBy('date', 'desc'));
-          unsubServices = onSnapshot(servicesQuery, (snapshot) => {
-            const servicesList: ServiceRecord[] = [];
-            snapshot.forEach((doc) => {
-              servicesList.push({ id: doc.id, ...doc.data() } as ServiceRecord);
-            });
-            setServices(servicesList);
-            localStorage.setItem('mobil_tracker_services', JSON.stringify(servicesList));
-          }, (error) => {
-            console.warn('Services snapshot listener error', error);
-          });
-        }).finally(() => {
-          if (auth.currentUser?.uid === firebaseUser.uid) {
+          refreshAllData().finally(() => {
             setLoading(false);
-          }
+          });
+        }).catch((e) => {
+          console.warn('Sync or refresh error', e);
+          refreshAllData().finally(() => {
+            setLoading(false);
+          });
         });
       } else {
         setUser(null);
         dbService.setUserId(null);
+        dbService.setAccessToken(null);
+        setAccessToken(null);
         setIsBiometricAvailableForUser(false);
         // Load offline cached data without forced mock seeding
         loadOfflineSeedData().finally(() => setLoading(false));
@@ -256,9 +186,6 @@ export default function App() {
 
     return () => {
       unsubscribeAuth();
-      if (unsubVehicle) unsubVehicle();
-      if (unsubTrips) unsubTrips();
-      if (unsubServices) unsubServices();
     };
   }, [dbService]);
 
@@ -417,8 +344,17 @@ export default function App() {
     setAuthSuccess('');
     try {
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-      setAuthSuccess('Berhasil masuk dengan akun Google!');
+      provider.addScope('https://www.googleapis.com/auth/spreadsheets');
+      provider.addScope('https://www.googleapis.com/auth/drive.file');
+      const result = await signInWithPopup(auth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        dbService.setAccessToken(credential.accessToken);
+        setAccessToken(credential.accessToken);
+        await dbService.syncLocalToSheets();
+        await refreshAllData();
+      }
+      setAuthSuccess('Berhasil masuk dengan akun Google dan terhubung ke Spreadsheet!');
     } catch (e: any) {
       console.error(e);
       if (e.code === 'auth/popup-closed-by-user') {
@@ -433,6 +369,8 @@ export default function App() {
 
   const handleLogout = async () => {
     await signOut(auth);
+    dbService.setAccessToken(null);
+    setAccessToken(null);
     setActiveTab('home');
     setAuthSuccess('');
   };
@@ -504,6 +442,8 @@ export default function App() {
         });
       }
 
+      await refreshAllData();
+
       // Reset Form
       setTripOrigin('');
       setTripDestination('');
@@ -552,6 +492,8 @@ export default function App() {
         });
       }
 
+      await refreshAllData();
+
       // Reset Form
       setServiceCost(0);
       setServiceOdo(vehicle ? vehicle.currentOdometer : 0);
@@ -588,6 +530,7 @@ export default function App() {
         oilInterval: editOilInterval,
         serviceInterval: editServiceInterval
       });
+      await refreshAllData();
       alert('Spesifikasi armada mobil Anda berhasil disimpan!');
     } catch (e) {
       console.error(e);
@@ -600,12 +543,14 @@ export default function App() {
   const handleDeleteTrip = async (id: string) => {
     if (confirm('Apakah Anda yakin ingin menghapus catatan perjalanan ini?')) {
       await dbService.deleteTrip(id);
+      await refreshAllData();
     }
   };
 
   const handleDeleteService = async (id: string) => {
     if (confirm('Apakah Anda yakin ingin menghapus catatan servis ini?')) {
       await dbService.deleteService(id);
+      await refreshAllData();
     }
   };
 
@@ -615,6 +560,7 @@ export default function App() {
       ...service,
       status: updatedStatus
     });
+    await refreshAllData();
   };
 
   if (loading) {
@@ -890,6 +836,22 @@ export default function App() {
                 <div className="text-left pl-1">
                   <p className="text-xs font-bold leading-tight">{user.displayName || 'Akun Driver'}</p>
                   <p className="text-[10px] text-white/70 leading-none truncate max-w-[160px]">{user.email}</p>
+                  {accessToken ? (
+                    <span className="inline-flex items-center gap-1 mt-1 text-[9px] bg-green-500/20 text-green-200 border border-green-500/30 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider">
+                      <span className="w-1 h-1 bg-green-400 rounded-full animate-ping"></span>
+                      Sheets Aktif
+                    </span>
+                  ) : (
+                    <button
+                      id="connect-sheets-header-btn"
+                      onClick={handleGoogleLogin}
+                      className="inline-flex items-center gap-1 mt-1 text-[9px] bg-amber-500/25 hover:bg-amber-500/40 text-amber-200 border border-amber-500/35 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider transition"
+                      title="Klik untuk menghubungkan database Google Sheets"
+                    >
+                      <span className="w-1 h-1 bg-amber-400 rounded-full"></span>
+                      Hubungkan Sheets
+                    </button>
+                  )}
                 </div>
                 
                 <div className="flex items-center gap-1.5">
@@ -1465,15 +1427,19 @@ export default function App() {
                   </div>
                 ) : (
                   <div className="space-y-4 text-xs">
-                    <div className="flex items-center gap-2 text-[#0194f3]">
+                    <div className="flex items-center gap-2 text-green-600">
                       <CheckCircle2 className="w-5 h-5 shrink-0" />
                       <h4 className="text-sm font-extrabold text-gray-900 dark:text-slate-100 uppercase tracking-wide">
-                        Sinkronisasi Firebase Aktif
+                        Sinkronisasi Google Sheets Aktif
                       </h4>
                     </div>
                     
                     <p className="text-gray-500 dark:text-slate-400 font-medium">
-                      Akun Anda berhasil terhubung dengan cloud database. Catatan pemakaian mobil Anda akan disimpan secara realtime sehingga dapat diakses di mana saja.
+                      {accessToken ? (
+                        <span>Akun Anda berhasil terhubung dengan Google Sheets. Seluruh armada mobil, BBM, dan jadwal servis disimpan secara aman langsung ke spreadsheet <strong className="text-[#0194f3]">Demor_Auto_Database</strong> di Google Drive Anda.</span>
+                      ) : (
+                        <span className="text-amber-600 dark:text-amber-400 font-bold">Harap hubungkan Google Sheets Anda untuk mengaktifkan sinkronisasi database cloud! Klik tombol "Hubungkan Sheets" di bagian profil di atas.</span>
+                      )}
                     </p>
 
                     {authSuccess && (
@@ -1509,12 +1475,12 @@ export default function App() {
               <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-gray-100 dark:border-slate-800 shadow-sm text-xs space-y-3">
                 <div className="flex items-center gap-2 text-gray-500 dark:text-slate-400">
                   <Info className="w-4 h-4 text-gray-400" />
-                  <h5 className="font-extrabold uppercase tracking-wide text-gray-700 dark:text-slate-300">Cara Kerja Mode Offline</h5>
+                  <h5 className="font-extrabold uppercase tracking-wide text-gray-700 dark:text-slate-300">Cara Kerja Mode Offline & Sheets</h5>
                 </div>
                 <ul className="list-disc pl-4 space-y-1.5 text-gray-500 dark:text-slate-400 font-medium">
                   <li>Aplikasi akan otomatis mendeteksi koneksi internet Anda.</li>
                   <li>Jika offline, seluruh rute perjalanan, BBM, dan jadwal servis baru Anda disimpan sementara di memori perangkat.</li>
-                  <li>Ketika koneksi internet terhubung kembali, aplikasi secara otomatis menyinkronkan data Anda ke database Firebase.</li>
+                  <li>Ketika koneksi internet terhubung kembali dan Google Sheets terhubung, aplikasi secara otomatis menyinkronkan data Anda ke spreadsheet <strong>Demor_Auto_Database</strong>.</li>
                 </ul>
               </div>
 
@@ -2296,6 +2262,7 @@ export default function App() {
                           status: 'Mendatang'
                         });
 
+                        await refreshAllData();
                         alert('Berhasil membuat & menambahkan jadwal servis mendatang otomatis!');
                       } catch (err) {
                         console.error(err);
