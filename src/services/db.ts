@@ -5,7 +5,8 @@ const STORAGE_KEYS = {
   TRIPS: 'mobil_tracker_trips',
   SERVICES: 'mobil_tracker_services',
   VEHICLE: 'mobil_tracker_vehicle',
-  BIOMETRIC: 'mobil_tracker_biometric_reg'
+  BIOMETRIC: 'mobil_tracker_biometric_reg',
+  ACCESS_TOKEN: 'google_sheets_access_token'
 };
 
 // Local storage helpers
@@ -61,6 +62,11 @@ export class DbService {
 
   constructor(userId: string | null) {
     this.userId = userId;
+    try {
+      this.accessToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+    } catch (e) {
+      console.error('Error reading access token from localStorage', e);
+    }
   }
 
   setUserId(userId: string | null) {
@@ -69,6 +75,15 @@ export class DbService {
 
   setAccessToken(token: string | null) {
     this.accessToken = token;
+    try {
+      if (token) {
+        localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, token);
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+      }
+    } catch (e) {
+      console.error('Error writing access token to localStorage', e);
+    }
   }
 
   getAccessToken(): string | null {
@@ -208,7 +223,7 @@ export class DbService {
       });
       if (!res.ok) {
         if (res.status === 401) {
-          this.accessToken = null; // force clear stale token
+          this.setAccessToken(null); // force clear stale token
         }
         throw new Error(`Sheets API read error: ${res.statusText}`);
       }
@@ -230,10 +245,14 @@ export class DbService {
       
       // 1. Clear existing rows first (A2 to Z1000)
       const clearUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A2:Z1000:clear`;
-      await fetch(clearUrl, {
+      const clearRes = await fetch(clearUrl, {
         method: 'POST',
         headers: { Authorization: `Bearer ${this.accessToken}` }
       });
+      if (!clearRes.ok && clearRes.status === 401) {
+        this.setAccessToken(null);
+        return;
+      }
 
       // 2. Map objects to array of values in correct order of headers
       const values = items.map(item => {
@@ -256,6 +275,9 @@ export class DbService {
         body: JSON.stringify({ values })
       });
       if (!res.ok) {
+        if (res.status === 401) {
+          this.setAccessToken(null);
+        }
         throw new Error(`Sheets API update error: ${res.statusText}`);
       }
     } catch (e) {

@@ -161,6 +161,12 @@ export default function App() {
           setIsBiometricAvailableForUser(dbService.getBiometricRegistration(firebaseUser.email));
         }
 
+        // Auto-load saved Google Sheets access token if exists
+        const savedToken = dbService.getAccessToken();
+        if (savedToken) {
+          setAccessToken(savedToken);
+        }
+
         // Wait for offline sync first (if token exists) and refresh
         dbService.syncLocalToSheets().then(() => {
           if (auth.currentUser?.uid !== firebaseUser.uid) return;
@@ -1099,10 +1105,7 @@ export default function App() {
 
         {/* TAB 1: HOME/DASHBOARD VIEW */}
         {activeTab === 'home' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
-            {/* Left: Active Vehicle Config and Summary Cards */}
-            <div className="lg:col-span-2 space-y-6">
+          <div className="max-w-4xl mx-auto space-y-6">
               
               {/* Vehicle profile card */}
               <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-gray-100 dark:border-slate-800 shadow-sm">
@@ -1143,94 +1146,16 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Inline Odometer Updater/Edit trigger */}
-                <details className="group border-t border-gray-100 dark:border-slate-800 pt-4 text-xs font-semibold text-gray-500 dark:text-slate-400">
-                  <summary className="cursor-pointer hover:text-gray-800 dark:hover:text-slate-200 flex items-center justify-between list-none">
-                    <span>⚙️ Ubah Spesifikasi & Odometer Kendaraan</span>
-                    <ChevronRight className="w-4 h-4 transition group-open:rotate-90 text-gray-400" />
-                  </summary>
-
-                  <form onSubmit={handleUpdateVehicle} className="mt-4 space-y-4 text-left">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div>
-                        <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">Merk Mobil</label>
-                        <input
-                          id="edit-brand-input"
-                          type="text"
-                          required
-                          value={editBrand}
-                          onChange={(e) => setEditBrand(e.target.value)}
-                          placeholder="e.g. Honda, Toyota"
-                          className="w-full py-2 px-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">Tipe / Model</label>
-                        <input
-                          id="edit-model-input"
-                          type="text"
-                          required
-                          value={editModel}
-                          onChange={(e) => setEditModel(e.target.value)}
-                          placeholder="e.g. HR-V, Avanza"
-                          className="w-full py-2 px-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">Nomor Plat</label>
-                        <input
-                          id="edit-plate-input"
-                          type="text"
-                          required
-                          value={editPlate}
-                          onChange={(e) => setEditPlate(e.target.value)}
-                          placeholder="e.g. B 1234 RFA"
-                          className="w-full py-2 px-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-sm"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">Current Odometer (km)</label>
-                        <input
-                          id="edit-odo-input"
-                          type="number"
-                          required
-                          value={editOdo}
-                          onChange={(e) => setEditOdo(parseInt(e.target.value) || 0)}
-                          className="w-full py-2 px-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-sm font-bold text-gray-800 dark:text-slate-100"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">Bahan Bakar</label>
-                        <select
-                          id="edit-fuel-select"
-                          value={editFuel}
-                          onChange={(e) => setEditFuel(e.target.value)}
-                          className="w-full py-2 px-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-sm font-bold text-gray-800 dark:text-slate-100"
-                        >
-                          <option>Pertamax (Oktan 92)</option>
-                          <option>Pertamax Turbo (Oktan 98)</option>
-                          <option>Pertalite (Oktan 90)</option>
-                          <option>Pertamina Dex (Diesel)</option>
-                          <option>Solar / Biosolar</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end pt-2">
-                      <button
-                        id="save-vehicle-btn"
-                        type="submit"
-                        disabled={updatingVehicle}
-                        className="py-2 px-5 bg-[#0194f3] hover:bg-[#017ece] text-white text-xs font-extrabold rounded-xl shadow-md transition"
-                      >
-                        {updatingVehicle ? 'Menyimpan...' : 'Simpan Spesifikasi'}
-                      </button>
-                    </div>
-                  </form>
-                </details>
+                {/* Inline Odometer Updater/Edit trigger replaced with clean link */}
+                <div className="border-t border-gray-100 dark:border-slate-800 pt-4 flex justify-between items-center text-xs">
+                  <span className="text-gray-400 dark:text-slate-500 font-semibold">Butuh penyesuaian armada?</span>
+                  <button
+                    onClick={() => setActiveTab('settings')}
+                    className="text-[#0194f3] hover:underline font-extrabold flex items-center gap-1"
+                  >
+                    <span>Ubah Spesifikasi & Odometer ➔</span>
+                  </button>
+                </div>
               </div>
 
               {/* Quick statistics widgets bento grid */}
@@ -1307,184 +1232,6 @@ export default function App() {
                   </div>
                 )}
               </div>
-
-            </div>
-
-            {/* Right: Firebase Auth login panel / User credentials setup (Traveloka themed white cards) */}
-            <div className="space-y-6">
-              
-              {/* Active sync status explanation */}
-              <div id="auth-card-block" className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-gray-100 dark:border-slate-800 shadow-sm">
-                {!user ? (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 text-amber-500">
-                      <Sparkles className="w-5 h-5 stroke-[2.5]" />
-                      <h4 className="text-sm font-extrabold text-gray-900 dark:text-slate-100 uppercase tracking-wide">
-                        Cadangkan & Sinkronkan
-                      </h4>
-                    </div>
-                    <p className="text-xs text-gray-500 dark:text-slate-400 font-medium">
-                      Anda sedang menggunakan <strong className="text-amber-600 dark:text-amber-400">Mode Lokal (Offline)</strong>. Hubungkan ke database Firebase Traveloka untuk mencadangkan data perjalanan Anda agar bisa diakses dari perangkat lain dengan aman.
-                    </p>
-
-                    {authError && (
-                      <div className="p-3 bg-red-50 dark:bg-red-950/20 text-red-600 border border-red-100 dark:border-red-900/40 rounded-xl text-xs font-semibold">
-                        ⚠️ {authError}
-                      </div>
-                    )}
-
-                    {authSuccess && (
-                      <div className="p-3 bg-green-50 dark:bg-green-950/20 text-green-600 border border-green-100 dark:border-green-900/40 rounded-xl text-xs font-semibold">
-                        ✅ {authSuccess}
-                      </div>
-                    )}
-
-                    {/* Login/Register Form */}
-                    <form onSubmit={handleAuthSubmit} className="space-y-3.5 text-xs text-left">
-                      {isRegistering && (
-                        <div>
-                          <label className="block text-gray-400 font-bold uppercase tracking-wider text-[9px] mb-1">Nama Lengkap</label>
-                          <input
-                            id="auth-name-input"
-                            type="text"
-                            placeholder="e.g. Rifki Andrean"
-                            value={displayName}
-                            onChange={(e) => setDisplayName(e.target.value)}
-                            className="w-full py-2.5 px-3 bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0194f3]"
-                          />
-                        </div>
-                      )}
-
-                      <div>
-                        <label className="block text-gray-400 font-bold uppercase tracking-wider text-[9px] mb-1">Email Pengemudi</label>
-                        <input
-                          id="auth-email-input"
-                          type="email"
-                          required
-                          placeholder="nama@email.com"
-                          value={email}
-                          onChange={(e) => {
-                            setEmail(e.target.value);
-                            // Check biometrics for this email
-                            setIsBiometricAvailableForUser(dbService.getBiometricRegistration(e.target.value));
-                          }}
-                          className="w-full py-2.5 px-3 bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0194f3]"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-gray-400 font-bold uppercase tracking-wider text-[9px] mb-1">Kata Sandi</label>
-                        <input
-                          id="auth-password-input"
-                          type="password"
-                          required
-                          placeholder="••••••••"
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          className="w-full py-2.5 px-3 bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0194f3]"
-                        />
-                      </div>
-
-                      <div className="flex gap-2.5 pt-2">
-                        {isBiometricAvailableForUser && (
-                          <button
-                            id="biometric-login-trigger"
-                            type="button"
-                            onClick={() => {
-                              setBiometricMode('login');
-                              setShowBiometricOverlay(true);
-                            }}
-                            className="p-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-[#0194f3]/10 hover:text-[#0194f3] rounded-xl transition text-slate-600 dark:text-slate-300 flex items-center justify-center"
-                            title="Masuk dengan Sidik Jari"
-                          >
-                            <Fingerprint className="w-5 h-5" />
-                          </button>
-                        )}
-                        <button
-                          id="auth-submit-btn"
-                          type="submit"
-                          className="flex-1 py-2.5 bg-[#0194f3] hover:bg-[#017ece] text-white font-extrabold rounded-xl shadow-md transition text-center"
-                        >
-                          {isRegistering ? 'Daftar Akun Baru' : 'Masuk Database'}
-                        </button>
-                      </div>
-
-                      <div className="pt-2 text-center">
-                        <button
-                          id="auth-toggle-mode-btn"
-                          type="button"
-                          onClick={() => {
-                            setIsRegistering(!isRegistering);
-                            setAuthError('');
-                          }}
-                          className="text-[#0194f3] font-bold hover:underline"
-                        >
-                          {isRegistering ? 'Sudah punya akun? Masuk di sini' : 'Belum punya akun? Daftar di sini'}
-                        </button>
-                      </div>
-
-                    </form>
-                  </div>
-                ) : (
-                  <div className="space-y-4 text-xs">
-                    <div className="flex items-center gap-2 text-green-600">
-                      <CheckCircle2 className="w-5 h-5 shrink-0" />
-                      <h4 className="text-sm font-extrabold text-gray-900 dark:text-slate-100 uppercase tracking-wide">
-                        Sinkronisasi Google Sheets Aktif
-                      </h4>
-                    </div>
-                    
-                    <p className="text-gray-500 dark:text-slate-400 font-medium">
-                      {accessToken ? (
-                        <span>Akun Anda berhasil terhubung dengan Google Sheets. Seluruh armada mobil, BBM, dan jadwal servis disimpan secara aman langsung ke spreadsheet <strong className="text-[#0194f3]">Demor_Auto_Database</strong> di Google Drive Anda.</span>
-                      ) : (
-                        <span className="text-amber-600 dark:text-amber-400 font-bold">Harap hubungkan Google Sheets Anda untuk mengaktifkan sinkronisasi database cloud! Klik tombol "Hubungkan Sheets" di bagian profil di atas.</span>
-                      )}
-                    </p>
-
-                    {authSuccess && (
-                      <div className="p-2.5 bg-green-50 dark:bg-green-950/20 text-green-600 border border-green-100 dark:border-green-900/40 rounded-xl font-semibold">
-                        {authSuccess}
-                      </div>
-                    )}
-
-                    <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800 space-y-2">
-                      <div className="font-bold text-gray-700 dark:text-slate-300">Autentikasi Biometrik (Sidik Jari)</div>
-                      <p className="text-gray-400 font-medium text-[11px]">
-                        {isBiometricAvailableForUser 
-                          ? '✅ Sidik jari terdaftar di perangkat ini. Anda bisa langsung masuk tanpa password.' 
-                          : 'Belum diaktifkan. Aktifkan sidik jari untuk login cepat di kemudian hari.'}
-                      </p>
-                      
-                      {!isBiometricAvailableForUser && (
-                        <button
-                          id="register-biometric-main-btn"
-                          onClick={triggerBiometricRegistration}
-                          className="w-full mt-2 py-2 px-3 bg-[#0194f3]/10 hover:bg-[#0194f3]/20 text-[#0194f3] font-bold rounded-lg transition flex items-center justify-center gap-1.5"
-                        >
-                          <Fingerprint className="w-4 h-4" />
-                          Daftarkan Sidik Jari
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Offline mode instruction list */}
-              <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-gray-100 dark:border-slate-800 shadow-sm text-xs space-y-3">
-                <div className="flex items-center gap-2 text-gray-500 dark:text-slate-400">
-                  <Info className="w-4 h-4 text-gray-400" />
-                  <h5 className="font-extrabold uppercase tracking-wide text-gray-700 dark:text-slate-300">Cara Kerja Mode Offline & Sheets</h5>
-                </div>
-                <ul className="list-disc pl-4 space-y-1.5 text-gray-500 dark:text-slate-400 font-medium">
-                  <li>Aplikasi akan otomatis mendeteksi koneksi internet Anda.</li>
-                  <li>Jika offline, seluruh rute perjalanan, BBM, dan jadwal servis baru Anda disimpan sementara di memori perangkat.</li>
-                  <li>Ketika koneksi internet terhubung kembali dan Google Sheets terhubung, aplikasi secara otomatis menyinkronkan data Anda ke spreadsheet <strong>Demor_Auto_Database</strong>.</li>
-                </ul>
-              </div>
-
-            </div>
 
           </div>
         )}
@@ -1627,60 +1374,116 @@ export default function App() {
               </div>
 
               {trips.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs text-left min-w-[500px]">
-                    <thead>
-                      <tr className="bg-slate-50 dark:bg-slate-800/60 text-gray-500 dark:text-slate-400 font-bold uppercase tracking-wider text-[10px] border-b border-gray-100 dark:border-slate-800">
-                        <th className="py-3 px-3">Tanggal</th>
-                        <th className="py-3 px-3">Rute (Asal ➔ Tujuan)</th>
-                        <th className="py-3 px-3 text-right">Jarak / Durasi</th>
-                        <th className="py-3 px-3 text-right">Biaya BBM</th>
-                        <th className="py-3 px-3 text-right">Efisiensi</th>
-                        <th className="py-3 px-3 text-center">Aksi</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-slate-800/80">
-                      {trips.map((trip) => {
-                        const liters = trip.fuelLiters || (trip.fuelCost / 13000);
-                        const efficiency = liters > 0 ? (trip.distance / liters).toFixed(1) : 'N/A';
-                        return (
-                          <tr key={trip.id} className="text-gray-700 dark:text-slate-300 hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
-                            <td className="py-3.5 px-3 font-semibold text-gray-500 dark:text-slate-400">
+                <>
+                  {/* Desktop View Table */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-xs text-left min-w-[500px]">
+                      <thead>
+                        <tr className="bg-slate-50 dark:bg-slate-800/60 text-gray-500 dark:text-slate-400 font-bold uppercase tracking-wider text-[10px] border-b border-gray-100 dark:border-slate-800">
+                          <th className="py-3 px-3">Tanggal</th>
+                          <th className="py-3 px-3">Rute (Asal ➔ Tujuan)</th>
+                          <th className="py-3 px-3 text-right">Jarak / Durasi</th>
+                          <th className="py-3 px-3 text-right">Biaya BBM</th>
+                          <th className="py-3 px-3 text-right">Efisiensi</th>
+                          <th className="py-3 px-3 text-center">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-slate-800/80">
+                        {trips.map((trip) => {
+                          const liters = trip.fuelLiters || (trip.fuelCost / 13000);
+                          const efficiency = liters > 0 ? (trip.distance / liters).toFixed(1) : 'N/A';
+                          return (
+                            <tr key={trip.id} className="text-gray-700 dark:text-slate-300 hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                              <td className="py-3.5 px-3 font-semibold text-gray-500 dark:text-slate-400">
+                                {new Date(trip.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              </td>
+                              <td className="py-3.5 px-3">
+                                <div className="font-bold text-gray-800 dark:text-slate-200">{trip.origin} ➔ {trip.destination}</div>
+                                {trip.notes && <div className="text-[10px] text-gray-400 italic max-w-xs truncate">{trip.notes}</div>}
+                              </td>
+                              <td className="py-3.5 px-3 text-right font-medium">
+                                <div className="font-bold text-gray-800 dark:text-slate-100">{trip.distance} km</div>
+                                <div className="text-[10px] text-gray-400 font-mono">{trip.duration} menit</div>
+                              </td>
+                              <td className="py-3.5 px-3 text-right font-bold text-[#ff5e1f]">
+                                {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(trip.fuelCost)}
+                                <span className="block text-[10px] text-gray-400 font-normal">{trip.fuelLiters || liters.toFixed(1)} L</span>
+                              </td>
+                              <td className="py-3.5 px-3 text-right">
+                                <span className="inline-block font-extrabold text-green-600 bg-green-50 dark:bg-green-950/20 py-0.5 px-2 rounded-full text-[10px]">
+                                  {efficiency} km/L
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-3 text-center">
+                                <button
+                                  id={`delete-trip-btn-${trip.id}`}
+                                  onClick={() => handleDeleteTrip(trip.id)}
+                                  className="p-1.5 hover:bg-red-50 dark:hover:bg-red-950/20 text-red-500 rounded-lg transition"
+                                  title="Hapus Log Perjalanan"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Mobile View Card List */}
+                  <div className="block md:hidden space-y-3">
+                    {trips.map((trip) => {
+                      const liters = trip.fuelLiters || (trip.fuelCost / 13000);
+                      const efficiency = liters > 0 ? (trip.distance / liters).toFixed(1) : 'N/A';
+                      return (
+                        <div key={trip.id} className="p-4 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-slate-800/60 space-y-3 text-xs">
+                          <div className="flex justify-between items-center">
+                            <span className="font-bold text-gray-500 dark:text-slate-400">
                               {new Date(trip.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
-                            </td>
-                            <td className="py-3.5 px-3">
-                              <div className="font-bold text-gray-800 dark:text-slate-200">{trip.origin} ➔ {trip.destination}</div>
-                              {trip.notes && <div className="text-[10px] text-gray-400 italic max-w-xs truncate">{trip.notes}</div>}
-                            </td>
-                            <td className="py-3.5 px-3 text-right font-medium">
-                              <div className="font-bold text-gray-800 dark:text-slate-100">{trip.distance} km</div>
-                              <div className="text-[10px] text-gray-400 font-mono">{trip.duration} menit</div>
-                            </td>
-                            <td className="py-3.5 px-3 text-right font-bold text-[#ff5e1f]">
-                              {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(trip.fuelCost)}
-                              <span className="block text-[10px] text-gray-400 font-normal">{trip.fuelLiters || liters.toFixed(1)} L</span>
-                            </td>
-                            <td className="py-3.5 px-3 text-right">
-                              <span className="inline-block font-extrabold text-green-600 bg-green-50 dark:bg-green-950/20 py-0.5 px-2 rounded-full text-[10px]">
+                            </span>
+                            <button
+                              id={`delete-trip-mobile-btn-${trip.id}`}
+                              onClick={() => handleDeleteTrip(trip.id)}
+                              className="p-1.5 bg-red-50 dark:bg-red-950/20 hover:bg-red-100 text-red-500 rounded-lg transition"
+                              title="Hapus Log Perjalanan"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                          
+                          <div>
+                            <div className="font-bold text-sm text-gray-800 dark:text-slate-200">{trip.origin} ➔ {trip.destination}</div>
+                            {trip.notes && <p className="text-[11px] text-gray-400 dark:text-slate-500 italic mt-0.5">{trip.notes}</p>}
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-center font-semibold">
+                            <div className="bg-white dark:bg-slate-900/60 p-2 rounded-lg">
+                              <span className="block text-[8px] text-gray-400 uppercase tracking-wider mb-0.5">Jarak</span>
+                              <span className="text-xs font-bold text-gray-800 dark:text-slate-200">{trip.distance} km</span>
+                              <span className="block text-[8px] text-gray-400 font-mono font-normal">{trip.duration} min</span>
+                            </div>
+                            
+                            <div className="bg-white dark:bg-slate-900/60 p-2 rounded-lg">
+                              <span className="block text-[8px] text-gray-400 uppercase tracking-wider mb-0.5">Biaya BBM</span>
+                              <span className="text-xs font-bold text-[#ff5e1f]">
+                                {new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(trip.fuelCost)}
+                              </span>
+                              <span className="block text-[8px] text-gray-400 font-normal">{(trip.fuelLiters || liters).toFixed(1)} L</span>
+                            </div>
+
+                            <div className="bg-white dark:bg-slate-900/60 p-2 rounded-lg flex flex-col justify-between">
+                              <span className="block text-[8px] text-gray-400 uppercase tracking-wider mb-0.5">Konsumsi</span>
+                              <span className="inline-block font-bold text-green-600 bg-green-50 dark:bg-green-950/20 py-0.5 px-1.5 rounded-full text-[10px] mx-auto">
                                 {efficiency} km/L
                               </span>
-                            </td>
-                            <td className="py-3.5 px-3 text-center">
-                              <button
-                                id={`delete-trip-btn-${trip.id}`}
-                                onClick={() => handleDeleteTrip(trip.id)}
-                                className="p-1.5 hover:bg-red-50 dark:hover:bg-red-950/20 text-red-500 rounded-lg transition"
-                                title="Hapus Log Perjalanan"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
               ) : (
                 <div className="text-xs text-gray-400 italic py-12 text-center border-2 border-dashed border-gray-100 dark:border-slate-800 rounded-xl">
                   Belum ada log perjalanan tercatat. Silakan tambah data di kolom sebelah kiri.
@@ -2031,6 +1834,182 @@ export default function App() {
                   ID: {vehicle?.id || 'info'}
                 </div>
               </div>
+            </div>
+
+            {/* Account & Google Sheets Sync Settings */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              
+              {/* Active sync status explanation */}
+              <div id="auth-card-block" className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-gray-100 dark:border-slate-800 shadow-sm h-fit">
+                {!user ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 text-amber-500">
+                      <Sparkles className="w-5 h-5 stroke-[2.5]" />
+                      <h4 className="text-sm font-extrabold text-gray-900 dark:text-slate-100 uppercase tracking-wide">
+                        Cadangkan & Sinkronkan
+                      </h4>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 font-medium">
+                      Anda sedang menggunakan <strong className="text-amber-600 dark:text-amber-400">Mode Lokal (Offline)</strong>. Hubungkan ke database Firebase Traveloka untuk mencadangkan data perjalanan Anda agar bisa diakses dari perangkat lain dengan aman.
+                    </p>
+
+                    {authError && (
+                      <div className="p-3 bg-red-50 dark:bg-red-950/20 text-red-600 border border-red-100 dark:border-red-900/40 rounded-xl text-xs font-semibold">
+                        ⚠️ {authError}
+                      </div>
+                    )}
+
+                    {authSuccess && (
+                      <div className="p-3 bg-green-50 dark:bg-green-950/20 text-green-600 border border-green-100 dark:border-green-900/40 rounded-xl text-xs font-semibold">
+                        ✅ {authSuccess}
+                      </div>
+                    )}
+
+                    {/* Login/Register Form */}
+                    <form onSubmit={handleAuthSubmit} className="space-y-3.5 text-xs text-left">
+                      {isRegistering && (
+                        <div>
+                          <label className="block text-gray-400 font-bold uppercase tracking-wider text-[9px] mb-1">Nama Lengkap</label>
+                          <input
+                            id="auth-name-input"
+                            type="text"
+                            placeholder="e.g. Rifki Andrean"
+                            value={displayName}
+                            onChange={(e) => setDisplayName(e.target.value)}
+                            className="w-full py-2.5 px-3 bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0194f3]"
+                          />
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="block text-gray-400 font-bold uppercase tracking-wider text-[9px] mb-1">Email Pengemudi</label>
+                        <input
+                          id="auth-email-input"
+                          type="email"
+                          required
+                          placeholder="nama@email.com"
+                          value={email}
+                          onChange={(e) => {
+                            setEmail(e.target.value);
+                            // Check biometrics for this email
+                            setIsBiometricAvailableForUser(dbService.getBiometricRegistration(e.target.value));
+                          }}
+                          className="w-full py-2.5 px-3 bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0194f3]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-gray-400 font-bold uppercase tracking-wider text-[9px] mb-1">Kata Sandi</label>
+                        <input
+                          id="auth-password-input"
+                          type="password"
+                          required
+                          placeholder="••••••••"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          className="w-full py-2.5 px-3 bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0194f3]"
+                        />
+                      </div>
+
+                      <div className="flex gap-2.5 pt-2">
+                        {isBiometricAvailableForUser && (
+                          <button
+                            id="biometric-login-trigger"
+                            type="button"
+                            onClick={() => {
+                              setBiometricMode('login');
+                              setShowBiometricOverlay(true);
+                            }}
+                            className="p-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-[#0194f3]/10 hover:text-[#0194f3] rounded-xl transition text-slate-600 dark:text-slate-300 flex items-center justify-center"
+                            title="Masuk dengan Sidik Jari"
+                          >
+                            <Fingerprint className="w-5 h-5" />
+                          </button>
+                        )}
+                        <button
+                          id="auth-submit-btn"
+                          type="submit"
+                          className="flex-1 py-2.5 bg-[#0194f3] hover:bg-[#017ece] text-white font-extrabold rounded-xl shadow-md transition text-center"
+                        >
+                          {isRegistering ? 'Daftar Akun Baru' : 'Masuk Database'}
+                        </button>
+                      </div>
+
+                      <div className="pt-2 text-center">
+                        <button
+                          id="auth-toggle-mode-btn"
+                          type="button"
+                          onClick={() => {
+                            setIsRegistering(!isRegistering);
+                            setAuthError('');
+                          }}
+                          className="text-[#0194f3] font-bold hover:underline"
+                        >
+                          {isRegistering ? 'Sudah punya akun? Masuk di sini' : 'Belum punya akun? Daftar di sini'}
+                        </button>
+                      </div>
+
+                    </form>
+                  </div>
+                ) : (
+                  <div className="space-y-4 text-xs">
+                    <div className="flex items-center gap-2 text-green-600">
+                      <CheckCircle2 className="w-5 h-5 shrink-0" />
+                      <h4 className="text-sm font-extrabold text-gray-900 dark:text-slate-100 uppercase tracking-wide">
+                        Sinkronisasi Google Sheets Aktif
+                      </h4>
+                    </div>
+                    
+                    <p className="text-gray-500 dark:text-slate-400 font-medium">
+                      {accessToken ? (
+                        <span>Akun Anda berhasil terhubung dengan Google Sheets. Seluruh armada mobil, BBM, dan jadwal servis disimpan secara aman langsung ke spreadsheet <strong className="text-[#0194f3]">Demor_Auto_Database</strong> di Google Drive Anda.</span>
+                      ) : (
+                        <span className="text-amber-600 dark:text-amber-400 font-bold">Harap hubungkan Google Sheets Anda untuk mengaktifkan sinkronisasi database cloud! Klik tombol "Hubungkan Sheets" di bagian profil di atas.</span>
+                      )}
+                    </p>
+
+                    {authSuccess && (
+                      <div className="p-2.5 bg-green-50 dark:bg-green-950/20 text-green-600 border border-green-100 dark:border-green-900/40 rounded-xl font-semibold">
+                        {authSuccess}
+                      </div>
+                    )}
+
+                    <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800 space-y-2">
+                      <div className="font-bold text-gray-700 dark:text-slate-300">Autentikasi Biometrik (Sidik Jari)</div>
+                      <p className="text-gray-400 font-medium text-[11px]">
+                        {isBiometricAvailableForUser 
+                          ? '✅ Sidik jari terdaftar di perangkat ini. Anda bisa langsung masuk tanpa password.' 
+                          : 'Belum diaktifkan. Aktifkan sidik jari untuk login cepat di kemudian hari.'}
+                      </p>
+                      
+                      {!isBiometricAvailableForUser && (
+                        <button
+                          id="register-biometric-main-btn"
+                          onClick={triggerBiometricRegistration}
+                          className="w-full mt-2 py-2 px-3 bg-[#0194f3]/10 hover:bg-[#0194f3]/20 text-[#0194f3] font-bold rounded-lg transition flex items-center justify-center gap-1.5"
+                        >
+                          <Fingerprint className="w-4 h-4" />
+                          Daftarkan Sidik Jari
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Offline mode instruction list */}
+              <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-gray-100 dark:border-slate-800 shadow-sm text-xs space-y-3 h-fit">
+                <div className="flex items-center gap-2 text-gray-500 dark:text-slate-400">
+                  <Info className="w-4 h-4 text-gray-400" />
+                  <h5 className="font-extrabold uppercase tracking-wide text-gray-700 dark:text-slate-300">Cara Kerja Mode Offline & Sheets</h5>
+                </div>
+                <ul className="list-disc pl-4 space-y-1.5 text-gray-500 dark:text-slate-400 font-medium">
+                  <li>Aplikasi akan otomatis mendeteksi koneksi internet Anda.</li>
+                  <li>Jika offline, seluruh rute perjalanan, BBM, dan jadwal servis baru Anda disimpan sementara di memori perangkat.</li>
+                  <li>Ketika koneksi internet terhubung kembali dan Google Sheets terhubung, aplikasi secara otomatis menyinkronkan data Anda ke spreadsheet <strong>Demor_Auto_Database</strong>.</li>
+                </ul>
+              </div>
+
             </div>
 
             {/* Main Form content */}
