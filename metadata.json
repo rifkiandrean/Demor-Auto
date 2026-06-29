@@ -1,0 +1,6 @@
+{
+  "name": "Demor Auto",
+  "description": "Aplikasi pencatatan pemakaian BBM, rute perjalanan, jarak tempuh real-time, dan jadwal servis rutin kendaraan otomatis dengan sinkronisasi Firebase, mode offline, laporan PDF, dan UI bertema Traveloka.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

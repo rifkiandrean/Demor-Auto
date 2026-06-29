@@ -1,0 +1,33 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+@variant dark (&:where(.dark, .dark *));
+@import "leaflet/dist/leaflet.css";
+
+@theme {
+  --font-sans: "Outfit", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Custom Traveloka specific colors and styles */
+.traveloka-gradient {
+  background: linear-gradient(135deg, #0194f3 0%, #017ece 100%);
+}
+
+.traveloka-accent-gradient {
+  background: linear-gradient(135deg, #ff5e1f 0%, #e04a0e 100%);
+}
+
+/* Custom leaflet style overrides to make it sleek */
+.leaflet-container {
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  font-family: inherit;
+}
+
+/* Smooth transitions for dark mode */
+* {
+  transition-property: background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
