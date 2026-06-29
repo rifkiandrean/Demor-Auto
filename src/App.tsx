@@ -45,7 +45,8 @@ import {
   Clock,
   ChevronRight,
   Sparkles,
-  Info
+  Info,
+  Settings
 } from 'lucide-react';
 
 export default function App() {
@@ -61,7 +62,7 @@ export default function App() {
   const [dbService] = useState(() => new DbService(null));
   
   // App state
-  const [activeTab, setActiveTab] = useState<'home' | 'trips' | 'services' | 'reports'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'trips' | 'services' | 'reports' | 'settings'>('home');
   const [vehicle, setVehicle] = useState<VehicleInfo | null>(null);
   const [trips, setTrips] = useState<TripRecord[]>([]);
   const [services, setServices] = useState<ServiceRecord[]>([]);
@@ -108,6 +109,8 @@ export default function App() {
   const [editPlate, setEditPlate] = useState('');
   const [editOdo, setEditOdo] = useState<number>(0);
   const [editFuel, setEditFuel] = useState('Pertamax (Oktan 92)');
+  const [editOilInterval, setEditOilInterval] = useState<number>(5000);
+  const [editServiceInterval, setEditServiceInterval] = useState<number>(10000);
   const [updatingVehicle, setUpdatingVehicle] = useState(false);
 
   // Active service reminders notifications list
@@ -183,8 +186,28 @@ export default function App() {
               setEditPlate(data.licensePlate);
               setEditOdo(data.currentOdometer);
               setEditFuel(data.fuelType);
+              setEditOilInterval(data.oilInterval || 5000);
+              setEditServiceInterval(data.serviceInterval || 10000);
             } else {
-              setVehicle(null);
+              const defaultVehicle: VehicleInfo = {
+                id: 'info',
+                brand: 'Honda',
+                model: 'HR-V 1.5 SE',
+                licensePlate: 'B 1234 RFA',
+                currentOdometer: 24500,
+                fuelType: 'Pertamax',
+                oilInterval: 5000,
+                serviceInterval: 10000
+              };
+              dbService.saveVehicle(defaultVehicle);
+              setVehicle(defaultVehicle);
+              setEditBrand(defaultVehicle.brand);
+              setEditModel(defaultVehicle.model);
+              setEditPlate(defaultVehicle.licensePlate);
+              setEditOdo(defaultVehicle.currentOdometer);
+              setEditFuel(defaultVehicle.fuelType);
+              setEditOilInterval(defaultVehicle.oilInterval || 5000);
+              setEditServiceInterval(defaultVehicle.serviceInterval || 10000);
             }
           }, (error) => {
             console.warn('Vehicle snapshot listener error', error);
@@ -323,12 +346,16 @@ export default function App() {
       setEditPlate(v.licensePlate);
       setEditOdo(v.currentOdometer);
       setEditFuel(v.fuelType);
+      setEditOilInterval(v.oilInterval || 5000);
+      setEditServiceInterval(v.serviceInterval || 10000);
     } else {
       setEditBrand('');
       setEditModel('');
       setEditPlate('');
       setEditOdo(0);
       setEditFuel('Pertamax (Oktan 92)');
+      setEditOilInterval(5000);
+      setEditServiceInterval(10000);
     }
   };
 
@@ -557,7 +584,9 @@ export default function App() {
         model: editModel,
         licensePlate: editPlate,
         currentOdometer: editOdo,
-        fuelType: editFuel
+        fuelType: editFuel,
+        oilInterval: editOilInterval,
+        serviceInterval: editServiceInterval
       });
       alert('Spesifikasi armada mobil Anda berhasil disimpan!');
     } catch (e) {
@@ -961,12 +990,25 @@ export default function App() {
             <TrendingUp className="w-4 h-4" />
             Grafik & PDF
           </button>
+
+          <button
+            id="nav-tab-settings"
+            onClick={() => setActiveTab('settings')}
+            className={`py-3 px-5 border-b-2 text-center whitespace-nowrap transition flex items-center gap-2 ${
+              activeTab === 'settings' 
+                ? 'border-[#0194f3] text-[#0194f3] bg-[#0194f3]/5 dark:bg-[#0194f3]/10' 
+                : 'border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:hover:text-slate-100'
+            }`}
+          >
+            <Settings className="w-4 h-4" />
+            Pengaturan Mobil
+          </button>
         </div>
       </nav>
 
       {/* Sticky Bottom Navigation Bar for Mobile and Tablet Devices */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-gray-100 dark:border-slate-800 shadow-[0_-4px_12px_rgba(0,0,0,0.05)] pb-safe transition-colors">
-        <div className="grid grid-cols-4 h-16">
+        <div className="grid grid-cols-5 h-16">
           <button
             id="bottom-nav-home"
             onClick={() => setActiveTab('home')}
@@ -1024,7 +1066,22 @@ export default function App() {
             <div className={`p-1 rounded-xl transition ${activeTab === 'reports' ? 'bg-[#0194f3]/10 scale-110' : ''}`}>
               <TrendingUp className="w-5 h-5" />
             </div>
-            <span className="text-[10px] font-bold tracking-tight">Grafik & PDF</span>
+            <span className="text-[10px] font-bold tracking-tight">Grafik</span>
+          </button>
+
+          <button
+            id="bottom-nav-settings"
+            onClick={() => setActiveTab('settings')}
+            className={`flex flex-col items-center justify-center gap-1 transition-all ${
+              activeTab === 'settings'
+                ? 'text-[#0194f3]'
+                : 'text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300'
+            }`}
+          >
+            <div className={`p-1 rounded-xl transition ${activeTab === 'settings' ? 'bg-[#0194f3]/10 scale-110' : ''}`}>
+              <Settings className="w-5 h-5" />
+            </div>
+            <span className="text-[10px] font-bold tracking-tight">Pengaturan</span>
           </button>
         </div>
       </nav>
@@ -1984,6 +2041,291 @@ export default function App() {
 
             {/* Monthly Report PDF Exporter Module */}
             <ReportPDF vehicle={vehicle} trips={trips} services={services} />
+
+          </div>
+        )}
+
+        {/* TAB 5: CAR SETTINGS VIEW */}
+        {activeTab === 'settings' && (
+          <div className="space-y-6">
+            
+            {/* Header info */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-gray-100 dark:border-slate-800 shadow-sm">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-blue-50 dark:bg-blue-950/30 rounded-xl">
+                    <Settings className="w-6 h-6 text-[#0194f3]" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Menu Pengaturan Mobil</h3>
+                    <p className="text-xs text-gray-500 dark:text-slate-400">Atur spesifikasi kendaraan, update odometer secara cepat, dan konfigurasikan pengingat servis berkala.</p>
+                  </div>
+                </div>
+                <div className="text-xs text-slate-400 font-mono">
+                  ID: {vehicle?.id || 'info'}
+                </div>
+              </div>
+            </div>
+
+            {/* Main Form content */}
+            <form onSubmit={handleUpdateVehicle} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              
+              {/* Form 1: General Specs */}
+              <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-gray-100 dark:border-slate-800 shadow-sm space-y-4">
+                <div className="flex items-center gap-2 border-b border-gray-100 dark:border-slate-800 pb-3">
+                  <Car className="w-5 h-5 text-gray-400" />
+                  <h4 className="text-sm font-extrabold text-slate-800 dark:text-slate-100 uppercase tracking-wider">Spesifikasi Armada</h4>
+                </div>
+
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <label className="block text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider text-[10px] mb-1">Merk Mobil</label>
+                    <input
+                      id="settings-brand-input"
+                      type="text"
+                      required
+                      value={editBrand}
+                      onChange={(e) => setEditBrand(e.target.value)}
+                      placeholder="e.g. Honda, Toyota"
+                      className="w-full py-2.5 px-3 bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0194f3] text-sm text-slate-800 dark:text-slate-100 font-semibold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider text-[10px] mb-1">Tipe / Model</label>
+                    <input
+                      id="settings-model-input"
+                      type="text"
+                      required
+                      value={editModel}
+                      onChange={(e) => setEditModel(e.target.value)}
+                      placeholder="e.g. HR-V 1.5 SE"
+                      className="w-full py-2.5 px-3 bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0194f3] text-sm text-slate-800 dark:text-slate-100 font-semibold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider text-[10px] mb-1">Nomor Plat</label>
+                    <input
+                      id="settings-plate-input"
+                      type="text"
+                      required
+                      value={editPlate}
+                      onChange={(e) => setEditPlate(e.target.value)}
+                      placeholder="e.g. B 1234 RFA"
+                      className="w-full py-2.5 px-3 bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0194f3] text-sm text-slate-800 dark:text-slate-100 font-semibold font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider text-[10px] mb-1">Jenis Bahan Bakar</label>
+                    <select
+                      id="settings-fuel-select"
+                      value={editFuel}
+                      onChange={(e) => setEditFuel(e.target.value)}
+                      className="w-full py-2.5 px-3 bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0194f3] text-sm text-slate-800 dark:text-slate-100 font-semibold"
+                    >
+                      <option value="Pertamax">Pertamax (Oktan 92)</option>
+                      <option value="Pertalite">Pertalite (Oktan 90)</option>
+                      <option value="Pertamax Turbo">Pertamax Turbo (Oktan 98)</option>
+                      <option value="Solar / Dexlite">Solar / Dexlite</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Form 2: Odometer update tool */}
+              <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-gray-100 dark:border-slate-800 shadow-sm space-y-4">
+                <div className="flex items-center gap-2 border-b border-gray-100 dark:border-slate-800 pb-3">
+                  <TrendingUp className="w-5 h-5 text-[#ff5e1f]" />
+                  <h4 className="text-sm font-extrabold text-slate-800 dark:text-slate-100 uppercase tracking-wider">Odometer Terkini</h4>
+                </div>
+
+                <div className="space-y-4 text-xs">
+                  <div>
+                    <label className="block text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider text-[10px] mb-1">Odometer Utama (km)</label>
+                    <div className="relative">
+                      <input
+                        id="settings-odo-input"
+                        type="number"
+                        required
+                        min="0"
+                        value={editOdo || ''}
+                        onChange={(e) => setEditOdo(parseInt(e.target.value) || 0)}
+                        className="w-full py-3 pl-4 pr-12 bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0194f3] text-lg font-extrabold text-[#0194f3] font-mono"
+                      />
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400">KM</span>
+                    </div>
+                  </div>
+
+                  {/* Fast updates */}
+                  <div>
+                    <span className="block text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider text-[10px] mb-2">Pembaruan Odometer Cepat (+ km)</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        id="odo-add-100-btn"
+                        type="button"
+                        onClick={() => setEditOdo((prev) => prev + 100)}
+                        className="py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 rounded-xl font-bold transition flex items-center justify-center gap-1 font-mono text-xs"
+                      >
+                        + 100 km
+                      </button>
+                      <button
+                        id="odo-add-500-btn"
+                        type="button"
+                        onClick={() => setEditOdo((prev) => prev + 500)}
+                        className="py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 rounded-xl font-bold transition flex items-center justify-center gap-1 font-mono text-xs"
+                      >
+                        + 500 km
+                      </button>
+                      <button
+                        id="odo-add-1000-btn"
+                        type="button"
+                        onClick={() => setEditOdo((prev) => prev + 1000)}
+                        className="py-2.5 bg-[#0194f3]/10 hover:bg-[#0194f3]/20 text-[#0194f3] rounded-xl font-bold transition flex items-center justify-center gap-1 font-mono text-xs"
+                      >
+                        + 1.000 km
+                      </button>
+                      <button
+                        id="odo-add-5000-btn"
+                        type="button"
+                        onClick={() => setEditOdo((prev) => prev + 5000)}
+                        className="py-2.5 bg-[#ff5e1f]/10 hover:bg-[#ff5e1f]/20 text-[#ff5e1f] rounded-xl font-bold transition flex items-center justify-center gap-1 font-mono text-xs"
+                      >
+                        + 5.000 km
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 rounded-xl text-[11px] font-semibold leading-relaxed">
+                    💡 Menambah odometer akan otomatis memicu pengecekan ulang pengingat servis pada halaman dashboard dan memicu notifikasi jika mendekati jadwal.
+                  </div>
+                </div>
+              </div>
+
+              {/* Form 3: Target Intervals Custom */}
+              <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-gray-100 dark:border-slate-800 shadow-sm space-y-4">
+                <div className="flex items-center gap-2 border-b border-gray-100 dark:border-slate-800 pb-3">
+                  <Wrench className="w-5 h-5 text-green-500" />
+                  <h4 className="text-sm font-extrabold text-slate-800 dark:text-slate-100 uppercase tracking-wider">Interval Servis Rutin</h4>
+                </div>
+
+                <div className="space-y-4 text-xs">
+                  <div>
+                    <label className="block text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider text-[10px] mb-1">Target Ganti Oli Mesin (km)</label>
+                    <div className="relative">
+                      <input
+                        id="settings-oil-interval"
+                        type="number"
+                        required
+                        min="1000"
+                        value={editOilInterval || ''}
+                        onChange={(e) => setEditOilInterval(parseInt(e.target.value) || 0)}
+                        className="w-full py-2.5 pl-3 pr-12 bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0194f3] text-sm text-slate-800 dark:text-slate-100 font-semibold"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400 font-mono">km</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider text-[10px] mb-1">Target Servis Umum / Tune Up (km)</label>
+                    <div className="relative">
+                      <input
+                        id="settings-service-interval"
+                        type="number"
+                        required
+                        min="1000"
+                        value={editServiceInterval || ''}
+                        onChange={(e) => setEditServiceInterval(parseInt(e.target.value) || 0)}
+                        className="w-full py-2.5 pl-3 pr-12 bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0194f3] text-sm text-slate-800 dark:text-slate-100 font-semibold"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400 font-mono">km</span>
+                    </div>
+                  </div>
+
+                  {/* Calculations breakdown preview block */}
+                  <div className="border-t border-gray-100 dark:border-slate-800 pt-3.5 space-y-2">
+                    <span className="block text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider text-[10px]">Prakiraan Target Servis Berikutnya</span>
+                    
+                    <div className="flex items-center justify-between p-2.5 bg-slate-50 dark:bg-slate-800/40 rounded-xl">
+                      <span className="font-semibold text-gray-600 dark:text-slate-400">Ganti Oli Mesin</span>
+                      <span className="font-mono font-bold text-[#0194f3] text-sm">{(editOdo + editOilInterval).toLocaleString('id-ID')} km</span>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2.5 bg-slate-50 dark:bg-slate-800/40 rounded-xl">
+                      <span className="font-semibold text-gray-600 dark:text-slate-400">Servis Umum</span>
+                      <span className="font-mono font-bold text-green-600 text-sm">{(editOdo + editServiceInterval).toLocaleString('id-ID')} km</span>
+                    </div>
+                  </div>
+
+                  {/* Automatic target reminders generator */}
+                  <button
+                    id="auto-generate-reminders-btn"
+                    type="button"
+                    onClick={async () => {
+                      if (!confirm('Apakah Anda ingin menjadwalkan servis Oli Mesin dan Servis Umum berikutnya secara otomatis pada target odometer?')) {
+                        return;
+                      }
+                      try {
+                        const in30Days = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().substring(0, 10);
+                        const in60Days = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().substring(0, 10);
+                        const in180Days = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().substring(0, 10);
+                        const in365Days = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().substring(0, 10);
+
+                        // add oli
+                        await dbService.addService({
+                          date: in30Days,
+                          serviceType: 'Oli Mesin',
+                          cost: 0,
+                          currentOdometer: editOdo,
+                          nextServiceOdometer: editOdo + editOilInterval,
+                          nextServiceDate: in180Days,
+                          notes: 'Pengingat oli terjadwal otomatis dari Menu Pengaturan.',
+                          status: 'Mendatang'
+                        });
+
+                        // add tuneup
+                        await dbService.addService({
+                          date: in60Days,
+                          serviceType: 'Tune Up',
+                          cost: 0,
+                          currentOdometer: editOdo,
+                          nextServiceOdometer: editOdo + editServiceInterval,
+                          nextServiceDate: in365Days,
+                          notes: 'Servis umum terjadwal otomatis dari Menu Pengaturan.',
+                          status: 'Mendatang'
+                        });
+
+                        alert('Berhasil membuat & menambahkan jadwal servis mendatang otomatis!');
+                      } catch (err) {
+                        console.error(err);
+                        alert('Gagal menjadwalkan servis otomatis.');
+                      }
+                    }}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-slate-850 dark:bg-slate-800 dark:hover:bg-slate-750 text-white rounded-xl font-bold transition text-xs flex items-center justify-center gap-2 border border-slate-800 dark:border-slate-700"
+                  >
+                    <Sparkles className="w-4 h-4 text-amber-400" />
+                    Buat Pengingat Servis Otomatis
+                  </button>
+                </div>
+              </div>
+
+              {/* Form submit/save floating-like action bar */}
+              <div className="lg:col-span-3 bg-slate-50 dark:bg-slate-850 p-4 border border-gray-100 dark:border-slate-800 rounded-2xl flex items-center justify-between">
+                <div className="text-xs text-gray-500 dark:text-slate-400 font-semibold hidden md:block">
+                  Simpan spesifikasi terbaru untuk menyinkronkan seluruh perangkat secara cloud.
+                </div>
+                <button
+                  id="settings-submit-save-btn"
+                  type="submit"
+                  disabled={updatingVehicle}
+                  className="w-full md:w-auto py-3 px-8 bg-[#0194f3] hover:bg-[#007cd1] text-white font-extrabold text-sm rounded-xl transition shadow-md shadow-blue-500/15 flex items-center justify-center gap-2"
+                >
+                  {updatingVehicle ? 'Menyimpan...' : 'Simpan Semua Pengaturan'}
+                </button>
+              </div>
+
+            </form>
 
           </div>
         )}

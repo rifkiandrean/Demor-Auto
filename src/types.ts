@@ -5,6 +5,8 @@ export interface VehicleInfo {
   licensePlate: string;
   currentOdometer: number; // in km
   fuelType: string;
+  oilInterval?: number; // custom setting for oil change interval
+  serviceInterval?: number; // custom setting for general service interval
 }
 
 export interface TripRecord {
