@@ -15,7 +15,7 @@ const getLocalData = <T>(key: string, defaultValue: T): T => {
     const data = localStorage.getItem(key);
     return data ? JSON.parse(data) : defaultValue;
   } catch (e) {
-    console.error('Error reading localStorage', e);
+    console.warn('Error reading localStorage', e);
     return defaultValue;
   }
 };
@@ -24,7 +24,7 @@ const setLocalData = <T>(key: string, data: T): void => {
   try {
     localStorage.setItem(key, JSON.stringify(data));
   } catch (e) {
-    console.error('Error writing localStorage', e);
+    console.warn('Error writing localStorage', e);
   }
 };
 
@@ -65,7 +65,7 @@ export class DbService {
     try {
       this.accessToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
     } catch (e) {
-      console.error('Error reading access token from localStorage', e);
+      console.warn('Error reading access token from localStorage', e);
     }
   }
 
@@ -82,7 +82,7 @@ export class DbService {
         localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
       }
     } catch (e) {
-      console.error('Error writing access token to localStorage', e);
+      console.warn('Error writing access token to localStorage', e);
     }
   }
 
@@ -206,7 +206,7 @@ export class DbService {
       
       return spreadsheetId;
     } catch (e) {
-      console.error('Error finding or creating Demor Auto Database Spreadsheet', e);
+      console.warn('Error finding or creating Demor Auto Database Spreadsheet', e);
       throw e;
     }
   }
@@ -231,7 +231,7 @@ export class DbService {
       const rows = data.values || [];
       return parseRows(headers, rows);
     } catch (e) {
-      console.error(`Error reading from Google Sheet ${sheetName}`, e);
+      console.warn(`Error reading from Google Sheet ${sheetName}`, e);
       throw e;
     }
   }
@@ -281,7 +281,7 @@ export class DbService {
         throw new Error(`Sheets API update error: ${res.statusText}`);
       }
     } catch (e) {
-      console.error(`Error writing to Google Sheet ${sheetName}`, e);
+      console.warn(`Error writing to Google Sheet ${sheetName}`, e);
       throw e;
     }
   }
@@ -315,7 +315,7 @@ export class DbService {
         const headers = ["id", "brand", "model", "licensePlate", "currentOdometer", "fuelType", "oilInterval", "serviceInterval"];
         await this.writeSheetRows('Vehicle', headers, [vehicle]);
       } catch (e) {
-        console.error('Error saving vehicle to Google Sheets', e);
+        console.warn('Error saving vehicle to Google Sheets', e);
       }
     }
   }
@@ -364,7 +364,7 @@ export class DbService {
         const updatedSheetTrips = [newTrip, ...currentSheetTrips];
         await this.writeSheetRows('Trips', headers, updatedSheetTrips);
       } catch (e) {
-        console.error('Error writing trip to Google Sheets', e);
+        console.warn('Error writing trip to Google Sheets', e);
       }
     }
     return newTrip;
@@ -383,7 +383,7 @@ export class DbService {
         const updatedSheetTrips = currentSheetTrips.filter(t => t.id !== id);
         await this.writeSheetRows('Trips', headers, updatedSheetTrips);
       } catch (e) {
-        console.error('Error deleting trip from Google Sheets', e);
+        console.warn('Error deleting trip from Google Sheets', e);
       }
     }
   }
@@ -432,7 +432,7 @@ export class DbService {
         const updatedSheetServices = [newService, ...currentSheetServices];
         await this.writeSheetRows('Services', headers, updatedSheetServices);
       } catch (e) {
-        console.error('Error writing service to Google Sheets', e);
+        console.warn('Error writing service to Google Sheets', e);
       }
     }
     return newService;
@@ -451,7 +451,7 @@ export class DbService {
         const updatedSheetServices = currentSheetServices.map(s => s.id === service.id ? service : s);
         await this.writeSheetRows('Services', headers, updatedSheetServices);
       } catch (e) {
-        console.error('Error updating service on Google Sheets', e);
+        console.warn('Error updating service on Google Sheets', e);
       }
     }
   }
@@ -469,7 +469,7 @@ export class DbService {
         const updatedSheetServices = currentSheetServices.filter(s => s.id !== id);
         await this.writeSheetRows('Services', headers, updatedSheetServices);
       } catch (e) {
-        console.error('Error deleting service from Google Sheets', e);
+        console.warn('Error deleting service from Google Sheets', e);
       }
     }
   }
@@ -485,7 +485,7 @@ export class DbService {
         const headers = ["id", "brand", "model", "licensePlate", "currentOdometer", "fuelType", "oilInterval", "serviceInterval"];
         await this.writeSheetRows('Vehicle', headers, [localVehicle]);
       } catch (e) {
-        console.error('Sync vehicle error', e);
+        console.warn('Sync vehicle error', e);
       }
     }
 
@@ -505,7 +505,7 @@ export class DbService {
         }
         await this.writeSheetRows('Trips', headers, mergedTrips);
       } catch (e) {
-        console.error('Sync trips error', e);
+        console.warn('Sync trips error', e);
       }
     }
 
@@ -525,7 +525,7 @@ export class DbService {
         }
         await this.writeSheetRows('Services', headers, mergedServices);
       } catch (e) {
-        console.error('Sync services error', e);
+        console.warn('Sync services error', e);
       }
     }
 

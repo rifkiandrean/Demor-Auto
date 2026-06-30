@@ -69,6 +69,7 @@ export default function App() {
   
   // Sync state indication
   const [syncing, setSyncing] = useState(false);
+  const [isGoogleLoggingIn, setIsGoogleLoggingIn] = useState(false);
 
   // Auth Forms state
   const [isRegistering, setIsRegistering] = useState(false);
@@ -346,6 +347,8 @@ export default function App() {
   };
 
   const handleGoogleLogin = async () => {
+    if (isGoogleLoggingIn) return;
+    setIsGoogleLoggingIn(true);
     setAuthError('');
     setAuthSuccess('');
     try {
@@ -363,13 +366,18 @@ export default function App() {
       setAuthSuccess('Berhasil masuk dengan akun Google dan terhubung ke Spreadsheet!');
     } catch (e: any) {
       console.error(e);
-      if (e.code === 'auth/popup-closed-by-user') {
+      if (e.code === 'auth/cancelled-popup-request') {
+        // Quietly log this, as concurrent requests or double clicking gets resolved
+        console.warn('Popup request cancelled. Most likely due to a subsequent popup trigger or closed state.');
+      } else if (e.code === 'auth/popup-closed-by-user') {
         setAuthError('Proses masuk dibatalkan oleh pengguna.');
       } else if (e.code === 'auth/blocked-by-popup-toggler') {
         setAuthError('Pop-up diblokir oleh browser. Harap izinkan pop-up untuk situs ini.');
       } else {
         setAuthError(e.message || 'Gagal masuk dengan akun Google.');
       }
+    } finally {
+      setIsGoogleLoggingIn(false);
     }
   };
 
@@ -710,8 +718,9 @@ export default function App() {
             <button
               id="google-auth-btn-mandatory"
               type="button"
+              disabled={isGoogleLoggingIn}
               onClick={handleGoogleLogin}
-              className="w-full py-2.5 px-4 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 border border-gray-200 dark:border-slate-700 rounded-xl font-semibold transition text-xs flex items-center justify-center gap-2.5 shadow-sm"
+              className="w-full py-2.5 px-4 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 border border-gray-200 dark:border-slate-700 rounded-xl font-semibold transition text-xs flex items-center justify-center gap-2.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24">
                 <path
@@ -731,7 +740,7 @@ export default function App() {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                 />
               </svg>
-              Masuk dengan Google
+              {isGoogleLoggingIn ? 'Menghubungkan...' : 'Masuk dengan Google'}
             </button>
 
             {/* Toggle Login / Register */}
@@ -850,12 +859,13 @@ export default function App() {
                   ) : (
                     <button
                       id="connect-sheets-header-btn"
+                      disabled={isGoogleLoggingIn}
                       onClick={handleGoogleLogin}
-                      className="inline-flex items-center gap-1 mt-1 text-[9px] bg-amber-500/25 hover:bg-amber-500/40 text-amber-200 border border-amber-500/35 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider transition"
+                      className="inline-flex items-center gap-1 mt-1 text-[9px] bg-amber-500/25 hover:bg-amber-500/40 text-amber-200 border border-amber-500/35 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider transition disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Klik untuk menghubungkan database Google Sheets"
                     >
                       <span className="w-1 h-1 bg-amber-400 rounded-full"></span>
-                      Hubungkan Sheets
+                      {isGoogleLoggingIn ? 'Connecting...' : 'Hubungkan Sheets'}
                     </button>
                   )}
                 </div>
@@ -1469,7 +1479,7 @@ export default function App() {
                               <span className="text-xs font-bold text-[#ff5e1f]">
                                 {new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(trip.fuelCost)}
                               </span>
-                              <span className="block text-[8px] text-gray-400 font-normal">{(trip.fuelLiters || liters).toFixed(1)} L</span>
+                              <span className="block text-[8px] text-gray-400 font-normal">{trip.fuelLiters || liters.toFixed(1)} L</span>
                             </div>
 
                             <div className="bg-white dark:bg-slate-900/60 p-2 rounded-lg flex flex-col justify-between">
