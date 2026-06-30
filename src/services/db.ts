@@ -106,7 +106,7 @@ export class DbService {
     return navigator.onLine;
   }
 
-  async getSpreadsheetId(): Promise<string> {
+  async getSpreadsheetId(createIfMissing = false): Promise<string> {
     if (!this.accessToken) {
       throw new Error('Google OAuth access token is missing. Please sign in with Google.');
     }
@@ -130,6 +130,9 @@ export class DbService {
       });
       
       if (!res.ok) {
+        if (res.status === 401) {
+          this.setAccessToken(null);
+        }
         throw new Error(`Failed to search Google Drive: ${res.statusText}`);
       }
       
@@ -141,6 +144,10 @@ export class DbService {
         localStorage.setItem(storageKey, spreadsheetId);
         this.cachedSpreadsheetId = spreadsheetId;
         return spreadsheetId;
+      }
+      
+      if (!createIfMissing) {
+        throw new Error('SPREADSHEET_NOT_FOUND');
       }
       
       // If not found, create a new spreadsheet with 3 sheets (Vehicle, Trips, Services)
@@ -225,12 +232,21 @@ export class DbService {
         if (res.status === 401) {
           this.setAccessToken(null); // force clear stale token
         }
+        if (res.status === 404) {
+          const storageKey = `demor_auto_spreadsheet_id_${this.userId || 'guest'}`;
+          localStorage.removeItem(storageKey);
+          this.cachedSpreadsheetId = null;
+          throw new Error('SPREADSHEET_NOT_FOUND');
+        }
         throw new Error(`Sheets API read error: ${res.statusText}`);
       }
       const data = await res.json();
       const rows = data.values || [];
       return parseRows(headers, rows);
-    } catch (e) {
+    } catch (e: any) {
+      if (e.message === 'SPREADSHEET_NOT_FOUND') {
+        throw e;
+      }
       console.warn(`Error reading from Google Sheet ${sheetName}`, e);
       throw e;
     }
@@ -249,9 +265,18 @@ export class DbService {
         method: 'POST',
         headers: { Authorization: `Bearer ${this.accessToken}` }
       });
-      if (!clearRes.ok && clearRes.status === 401) {
-        this.setAccessToken(null);
-        return;
+      if (!clearRes.ok) {
+        if (clearRes.status === 401) {
+          this.setAccessToken(null);
+          return;
+        }
+        if (clearRes.status === 404) {
+          const storageKey = `demor_auto_spreadsheet_id_${this.userId || 'guest'}`;
+          localStorage.removeItem(storageKey);
+          this.cachedSpreadsheetId = null;
+          throw new Error('SPREADSHEET_NOT_FOUND');
+        }
+        throw new Error(`Sheets API clear error: ${clearRes.statusText}`);
       }
 
       // 2. Map objects to array of values in correct order of headers
@@ -278,9 +303,18 @@ export class DbService {
         if (res.status === 401) {
           this.setAccessToken(null);
         }
+        if (res.status === 404) {
+          const storageKey = `demor_auto_spreadsheet_id_${this.userId || 'guest'}`;
+          localStorage.removeItem(storageKey);
+          this.cachedSpreadsheetId = null;
+          throw new Error('SPREADSHEET_NOT_FOUND');
+        }
         throw new Error(`Sheets API update error: ${res.statusText}`);
       }
-    } catch (e) {
+    } catch (e: any) {
+      if (e.message === 'SPREADSHEET_NOT_FOUND') {
+        throw e;
+      }
       console.warn(`Error writing to Google Sheet ${sheetName}`, e);
       throw e;
     }
@@ -534,6 +568,13 @@ export class DbService {
 
   async syncLocalToFirebase(): Promise<void> {
     await this.syncLocalToSheets();
+  }
+
+  disconnect(): void {
+    this.setAccessToken(null);
+    this.cachedSpreadsheetId = null;
+    const storageKey = `demor_auto_spreadsheet_id_${this.userId || 'guest'}`;
+    localStorage.removeItem(storageKey);
   }
 
   // Biometric local status

@@ -70,6 +70,7 @@ export default function App() {
   // Sync state indication
   const [syncing, setSyncing] = useState(false);
   const [isGoogleLoggingIn, setIsGoogleLoggingIn] = useState(false);
+  const [isSpreadsheetMissing, setIsSpreadsheetMissing] = useState(false);
 
   // Auth Forms state
   const [isRegistering, setIsRegistering] = useState(false);
@@ -171,11 +172,15 @@ export default function App() {
         // Wait for offline sync first (if token exists) and refresh
         dbService.syncLocalToSheets().then(() => {
           if (auth.currentUser?.uid !== firebaseUser.uid) return;
+          setIsSpreadsheetMissing(false);
           refreshAllData().finally(() => {
             setLoading(false);
           });
         }).catch((e) => {
           console.warn('Sync or refresh error', e);
+          if (e.message === 'SPREADSHEET_NOT_FOUND') {
+            setIsSpreadsheetMissing(true);
+          }
           refreshAllData().finally(() => {
             setLoading(false);
           });
@@ -294,20 +299,29 @@ export default function App() {
   };
 
   const refreshAllData = async () => {
-    const v = await dbService.getVehicle();
-    const t = await dbService.getTrips();
-    const s = await dbService.getServices();
-    
-    setVehicle(v);
-    setTrips(t);
-    setServices(s);
+    try {
+      const v = await dbService.getVehicle();
+      const t = await dbService.getTrips();
+      const s = await dbService.getServices();
+      
+      setVehicle(v);
+      setTrips(t);
+      setServices(s);
 
-    if (v) {
-      setEditBrand(v.brand);
-      setEditModel(v.model);
-      setEditPlate(v.licensePlate);
-      setEditOdo(v.currentOdometer);
-      setEditFuel(v.fuelType);
+      if (v) {
+        setEditBrand(v.brand);
+        setEditModel(v.model);
+        setEditPlate(v.licensePlate);
+        setEditOdo(v.currentOdometer);
+        setEditFuel(v.fuelType);
+      }
+      setIsSpreadsheetMissing(false);
+    } catch (e: any) {
+      if (e.message === 'SPREADSHEET_NOT_FOUND') {
+        setIsSpreadsheetMissing(true);
+      } else {
+        console.warn('Error refreshing all data:', e);
+      }
     }
   };
 
@@ -360,7 +374,10 @@ export default function App() {
       if (credential?.accessToken) {
         dbService.setAccessToken(credential.accessToken);
         setAccessToken(credential.accessToken);
+        // Explicitly create the spreadsheet if missing on initial connect!
+        await dbService.getSpreadsheetId(true);
         await dbService.syncLocalToSheets();
+        setIsSpreadsheetMissing(false);
         await refreshAllData();
       }
       setAuthSuccess('Berhasil masuk dengan akun Google dan terhubung ke Spreadsheet!');
@@ -381,10 +398,37 @@ export default function App() {
     }
   };
 
+  const handleCreateNewSpreadsheet = async () => {
+    try {
+      setSyncing(true);
+      setAuthError('');
+      setAuthSuccess('');
+      // Force creation of a brand new spreadsheet database
+      await dbService.getSpreadsheetId(true);
+      await dbService.syncLocalToSheets();
+      setIsSpreadsheetMissing(false);
+      setAuthSuccess('Berhasil membuat spreadsheet database baru!');
+      await refreshAllData();
+    } catch (e: any) {
+      console.error(e);
+      setAuthError('Gagal membuat spreadsheet baru: ' + e.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleDisconnectSheets = () => {
+    dbService.disconnect();
+    setAccessToken(null);
+    setIsSpreadsheetMissing(false);
+    setAuthSuccess('Berhasil memutuskan koneksi dari Google Sheets.');
+  };
+
   const handleLogout = async () => {
     await signOut(auth);
-    dbService.setAccessToken(null);
+    dbService.disconnect();
     setAccessToken(null);
+    setIsSpreadsheetMissing(false);
     setActiveTab('home');
     setAuthSuccess('');
   };
@@ -852,10 +896,19 @@ export default function App() {
                   <p className="text-xs font-bold leading-tight">{user.displayName || 'Akun Driver'}</p>
                   <p className="text-[10px] text-white/70 leading-none truncate max-w-[160px]">{user.email}</p>
                   {accessToken ? (
-                    <span className="inline-flex items-center gap-1 mt-1 text-[9px] bg-green-500/20 text-green-200 border border-green-500/30 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider">
-                      <span className="w-1 h-1 bg-green-400 rounded-full animate-ping"></span>
-                      Sheets Aktif
-                    </span>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className="inline-flex items-center gap-1 text-[9px] bg-green-500/20 text-green-200 border border-green-500/30 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider">
+                        <span className="w-1 h-1 bg-green-400 rounded-full animate-ping"></span>
+                        Sheets Aktif
+                      </span>
+                      <button
+                        onClick={handleDisconnectSheets}
+                        className="text-[9px] text-red-200 hover:text-red-300 bg-red-500/20 hover:bg-red-500/35 border border-red-500/30 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider transition"
+                        title="Putuskan sambungan Google Sheets"
+                      >
+                        Putuskan
+                      </button>
+                    </div>
                   ) : (
                     <button
                       id="connect-sheets-header-btn"
@@ -1066,6 +1119,38 @@ export default function App() {
 
       {/* Main Content Area - Extra padding-bottom on mobile to clear the sticky bottom navigation bar */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 pb-24 md:pb-6 space-y-6">
+
+        {/* Google Sheets Missing Notification Banner */}
+        {isSpreadsheetMissing && (
+          <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm animate-fade-in z-40 relative">
+            <div className="flex gap-3">
+              <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-lg text-amber-600 dark:text-amber-400 self-start">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-amber-800 dark:text-amber-300">Database Spreadsheet Tidak Ditemukan</h4>
+                <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                  Spreadsheet database <code className="font-mono bg-amber-100/50 dark:bg-amber-900/20 px-1 rounded text-[11px]">Demor_Auto_Database</code> tidak ditemukan di Google Drive Anda (mungkin telah dihapus atau dipindahkan ke Sampah).
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 self-end sm:self-center">
+              <button
+                onClick={handleCreateNewSpreadsheet}
+                disabled={syncing}
+                className="text-xs font-bold bg-[#ff5e1f] hover:bg-[#e04f1a] text-white px-3 py-1.5 rounded-lg transition shadow-sm disabled:opacity-50 cursor-pointer"
+              >
+                {syncing ? 'Membuat...' : 'Buat Database Baru'}
+              </button>
+              <button
+                onClick={handleDisconnectSheets}
+                className="text-xs font-bold bg-gray-200 hover:bg-gray-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-300 px-3 py-1.5 rounded-lg transition cursor-pointer"
+              >
+                Putuskan Hubungan
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Automatic Reminders Notification Banner (Urgent / Warning Alert lists) */}
         {reminders.length > 0 && (
@@ -1972,7 +2057,26 @@ export default function App() {
                     
                     <p className="text-gray-500 dark:text-slate-400 font-medium">
                       {accessToken ? (
-                        <span>Akun Anda berhasil terhubung dengan Google Sheets. Seluruh armada mobil, BBM, dan jadwal servis disimpan secara aman langsung ke spreadsheet <strong className="text-[#0194f3]">Demor_Auto_Database</strong> di Google Drive Anda.</span>
+                        <div className="space-y-3">
+                          <span>Akun Anda berhasil terhubung dengan Google Sheets. Seluruh armada mobil, BBM, dan jadwal servis disimpan secara aman langsung ke spreadsheet <strong className="text-[#0194f3]">Demor_Auto_Database</strong> di Google Drive Anda.</span>
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={handleCreateNewSpreadsheet}
+                              disabled={syncing}
+                              className="px-3 py-1.5 bg-[#0194f3]/10 hover:bg-[#0194f3]/25 text-[#0194f3] font-bold rounded-lg transition text-[11px] disabled:opacity-50 cursor-pointer"
+                            >
+                              {syncing ? 'Membuat...' : 'Buat Database Baru'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleDisconnectSheets}
+                              className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 font-bold rounded-lg transition text-[11px] cursor-pointer"
+                            >
+                              Putuskan Sambungan Sheets
+                            </button>
+                          </div>
+                        </div>
                       ) : (
                         <span className="text-amber-600 dark:text-amber-400 font-bold">Harap hubungkan Google Sheets Anda untuk mengaktifkan sinkronisasi database cloud! Klik tombol "Hubungkan Sheets" di bagian profil di atas.</span>
                       )}
