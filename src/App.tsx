@@ -49,6 +49,19 @@ import {
   Database
 } from 'lucide-react';
 
+// Helpers for parsing & formatting Indonesian numbers with comma decimal separator
+const parseIndoFloat = (val: string): number => {
+  if (!val) return 0;
+  const sanitized = val.replace(/,/g, '.');
+  const parsed = parseFloat(sanitized);
+  return isNaN(parsed) ? 0 : parsed;
+};
+
+const formatIndoFloat = (val: number): string => {
+  if (!val) return '';
+  return val.toString().replace(/\./g, ',');
+};
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -89,9 +102,11 @@ export default function App() {
   const [tripOrigin, setTripOrigin] = useState('');
   const [tripDestination, setTripDestination] = useState('');
   const [tripDistance, setTripDistance] = useState<number>(0);
+  const [tripDistanceRaw, setTripDistanceRaw] = useState<string>('');
   const [tripDuration, setTripDuration] = useState<number>(0);
   const [tripFuelCost, setTripFuelCost] = useState<number>(0);
   const [tripFuelLiters, setTripFuelLiters] = useState<number>(0);
+  const [tripFuelLitersRaw, setTripFuelLitersRaw] = useState<string>('');
   const [tripNotes, setTripNotes] = useState('');
   const [tripSubmitting, setTripSubmitting] = useState(false);
 
@@ -507,9 +522,11 @@ export default function App() {
       setTripOrigin('');
       setTripDestination('');
       setTripDistance(0);
+      setTripDistanceRaw('');
       setTripDuration(0);
       setTripFuelCost(0);
       setTripFuelLiters(0);
+      setTripFuelLitersRaw('');
       setTripNotes('');
       
       // Go back to list or show success
@@ -1448,12 +1465,15 @@ export default function App() {
                     setDestination={setTripDestination}
                     onDistanceCalculated={(dist) => {
                       setTripDistance(dist);
+                      setTripDistanceRaw(formatIndoFloat(dist));
                       // Auto calculate travel duration estimate (avg 60 km/h = 1 min per km)
                       setTripDuration(Math.max(10, Math.round(dist * 1.1)));
                       // Auto calculate Pertamax cost estimate (approx Rp 1,100 per km)
                       setTripFuelCost(Math.round(dist * 1250 / 100) * 100);
                       // Auto estimate liters (12 km/L)
-                      setTripFuelLiters(parseFloat((dist / 12).toFixed(1)));
+                      const estLiters = parseFloat((dist / 12).toFixed(1));
+                      setTripFuelLiters(estLiters);
+                      setTripFuelLitersRaw(formatIndoFloat(estLiters));
                     }}
                   />
                 </div>
@@ -1463,11 +1483,18 @@ export default function App() {
                     <label className="block text-gray-400 font-bold uppercase tracking-wider text-[9px] mb-1">Jarak Tempuh (km)</label>
                     <input
                       id="trip-distance-input"
-                      type="number"
+                      type="text"
                       required
-                      min="1"
-                      value={tripDistance}
-                      onChange={(e) => setTripDistance(parseFloat(e.target.value) || 0)}
+                      placeholder="Contoh: 12,5"
+                      value={tripDistanceRaw}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (/^[0-9.,]*$/.test(raw)) {
+                          setTripDistanceRaw(raw);
+                          const val = parseIndoFloat(raw);
+                          setTripDistance(val);
+                        }
+                      }}
                       className="w-full py-2.5 px-3 bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0194f3] font-bold text-gray-900 dark:text-slate-100"
                     />
                   </div>
@@ -1504,12 +1531,18 @@ export default function App() {
                     <label className="block text-gray-400 font-bold uppercase tracking-wider text-[9px] mb-1">Konsumsi BBM (Liter)</label>
                     <input
                       id="trip-fuelliters-input"
-                      type="number"
-                      step="0.1"
+                      type="text"
                       required
-                      min="0.1"
-                      value={tripFuelLiters}
-                      onChange={(e) => setTripFuelLiters(parseFloat(e.target.value) || 0)}
+                      placeholder="Contoh: 1,2"
+                      value={tripFuelLitersRaw}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (/^[0-9.,]*$/.test(raw)) {
+                          setTripFuelLitersRaw(raw);
+                          const val = parseIndoFloat(raw);
+                          setTripFuelLiters(val);
+                        }
+                      }}
                       className="w-full py-2.5 px-3 bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#ff5e1f] font-bold"
                     />
                   </div>
