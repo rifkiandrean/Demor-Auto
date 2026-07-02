@@ -1,15 +1,12 @@
 import { TripRecord, ServiceRecord, VehicleInfo } from '../types';
 
-// Standard local storage keys for offline fallback
+// Standard local storage keys
 const STORAGE_KEYS = {
-  TRIPS: 'mobil_tracker_trips',
-  SERVICES: 'mobil_tracker_services',
-  VEHICLE: 'mobil_tracker_vehicle',
   BIOMETRIC: 'mobil_tracker_biometric_reg',
   ACCESS_TOKEN: 'google_sheets_access_token'
 };
 
-// Local storage helpers
+// Local storage helpers for token and preferences
 const getLocalData = <T>(key: string, defaultValue: T): T => {
   try {
     const data = localStorage.getItem(key);
@@ -323,246 +320,200 @@ export class DbService {
   // VEHICLE OPERATIONS
   async getVehicle(): Promise<VehicleInfo | null> {
     if (!this.accessToken) {
-      return getLocalData<VehicleInfo | null>(STORAGE_KEYS.VEHICLE, null);
+      return null;
     }
 
     try {
       const headers = ["id", "brand", "model", "licensePlate", "currentOdometer", "fuelType", "oilInterval", "serviceInterval"];
       const vehicles = await this.readSheetRows('Vehicle', headers);
       if (vehicles.length > 0) {
-        const data = vehicles[0] as VehicleInfo;
-        setLocalData(STORAGE_KEYS.VEHICLE, data);
-        return data;
+        return vehicles[0] as VehicleInfo;
       }
-    } catch (e) {
-      console.warn('Google Sheets error fetching vehicle, falling back to local', e);
+    } catch (e: any) {
+      if (e.message === 'SPREADSHEET_NOT_FOUND') {
+        throw e;
+      }
+      console.warn('Google Sheets error fetching vehicle', e);
+      throw e;
     }
-    return getLocalData<VehicleInfo | null>(STORAGE_KEYS.VEHICLE, null);
+    return null;
   }
 
   async saveVehicle(vehicle: VehicleInfo): Promise<void> {
-    setLocalData(STORAGE_KEYS.VEHICLE, vehicle);
-    this.triggerSyncChange();
-
-    if (this.accessToken) {
-      try {
-        const headers = ["id", "brand", "model", "licensePlate", "currentOdometer", "fuelType", "oilInterval", "serviceInterval"];
-        await this.writeSheetRows('Vehicle', headers, [vehicle]);
-      } catch (e) {
-        console.warn('Error saving vehicle to Google Sheets', e);
-      }
+    if (!this.accessToken) {
+      throw new Error('Google OAuth access token is missing. Please sign in with Google.');
     }
+    const headers = ["id", "brand", "model", "licensePlate", "currentOdometer", "fuelType", "oilInterval", "serviceInterval"];
+    await this.writeSheetRows('Vehicle', headers, [vehicle]);
+    this.triggerSyncChange();
   }
 
   // TRIPS OPERATIONS
   async getTrips(): Promise<TripRecord[]> {
     if (!this.accessToken) {
-      return getLocalData<TripRecord[]>(STORAGE_KEYS.TRIPS, []).sort(
-        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-      );
+      return [];
     }
 
     try {
       const headers = ["id", "date", "origin", "destination", "distance", "duration", "fuelCost", "fuelLiters", "notes", "createdAt"];
       const trips = await this.readSheetRows('Trips', headers);
-      setLocalData(STORAGE_KEYS.TRIPS, trips);
-      return trips.sort(
+      
+      // Filter out any template/mock trips
+      const filteredTrips = trips.filter(trip => {
+        const isMockDate = trip.date === '2026-06-25' || trip.date === '25 Jun 2026' ||
+                           trip.date === '2026-06-12' || trip.date === '12 Jun 2026' ||
+                           trip.date === '2026-05-30' || trip.date === '30 Mei 2026' ||
+                           String(trip.date).includes('25 Jun') || 
+                           String(trip.date).includes('12 Jun') || 
+                           String(trip.date).includes('30 Mei');
+        
+        const isMockRoute = (trip.origin && trip.origin.includes('Jakarta') && trip.destination && trip.destination.includes('Bandung')) ||
+                            (trip.origin && trip.origin.includes('Bandung') && trip.destination && trip.destination.includes('Jakarta')) ||
+                            (trip.origin && trip.origin.includes('Surabaya') && trip.destination && trip.destination.includes('Malang'));
+
+        const isMockNotes = trip.notes && (
+          trip.notes.includes('Liburan') || 
+          trip.notes.includes('akhir pekan') || 
+          trip.notes.includes('keluarga') ||
+          trip.notes.includes('Perjalanan pulang') ||
+          trip.notes.includes('arus lalu lintas lancar') ||
+          trip.notes.includes('Kunjungan kerja') ||
+          trip.notes.includes('ke Malang')
+        );
+
+        const isMockId = String(trip.id).startsWith('mock');
+        
+        return !(isMockDate || isMockRoute || isMockNotes || isMockId);
+      });
+      
+      // If we filtered out some mock trips, update the Google Sheet to permanently delete them
+      if (filteredTrips.length < trips.length) {
+        await this.writeSheetRows('Trips', headers, filteredTrips);
+      }
+
+      return filteredTrips.sort(
         (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
       );
-    } catch (e) {
-      console.warn('Google Sheets error fetching trips, falling back to local', e);
+    } catch (e: any) {
+      if (e.message === 'SPREADSHEET_NOT_FOUND') {
+        throw e;
+      }
+      console.warn('Google Sheets error fetching trips', e);
+      throw e;
     }
-    return getLocalData<TripRecord[]>(STORAGE_KEYS.TRIPS, []).sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
   }
 
   async addTrip(trip: Omit<TripRecord, 'id' | 'createdAt'>): Promise<TripRecord> {
+    if (!this.accessToken) {
+      throw new Error('Google OAuth access token is missing. Please sign in with Google.');
+    }
     const newTrip: TripRecord = {
       ...trip,
       id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2),
       createdAt: new Date().toISOString()
     };
 
-    const currentTrips = getLocalData<TripRecord[]>(STORAGE_KEYS.TRIPS, []);
-    const updatedTrips = [newTrip, ...currentTrips].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
-    setLocalData(STORAGE_KEYS.TRIPS, updatedTrips);
+    const headers = ["id", "date", "origin", "destination", "distance", "duration", "fuelCost", "fuelLiters", "notes", "createdAt"];
+    const currentSheetTrips = await this.readSheetRows('Trips', headers);
+    const updatedSheetTrips = [newTrip, ...currentSheetTrips];
+    await this.writeSheetRows('Trips', headers, updatedSheetTrips);
     this.triggerSyncChange();
-
-    if (this.accessToken) {
-      try {
-        const headers = ["id", "date", "origin", "destination", "distance", "duration", "fuelCost", "fuelLiters", "notes", "createdAt"];
-        const currentSheetTrips = await this.readSheetRows('Trips', headers);
-        const updatedSheetTrips = [newTrip, ...currentSheetTrips];
-        await this.writeSheetRows('Trips', headers, updatedSheetTrips);
-      } catch (e) {
-        console.warn('Error writing trip to Google Sheets', e);
-      }
-    }
     return newTrip;
   }
 
   async deleteTrip(id: string): Promise<void> {
-    const currentTrips = getLocalData<TripRecord[]>(STORAGE_KEYS.TRIPS, []);
-    const updatedTrips = currentTrips.filter(t => t.id !== id);
-    setLocalData(STORAGE_KEYS.TRIPS, updatedTrips);
-    this.triggerSyncChange();
-
-    if (this.accessToken) {
-      try {
-        const headers = ["id", "date", "origin", "destination", "distance", "duration", "fuelCost", "fuelLiters", "notes", "createdAt"];
-        const currentSheetTrips = await this.readSheetRows('Trips', headers);
-        const updatedSheetTrips = currentSheetTrips.filter(t => t.id !== id);
-        await this.writeSheetRows('Trips', headers, updatedSheetTrips);
-      } catch (e) {
-        console.warn('Error deleting trip from Google Sheets', e);
-      }
+    if (!this.accessToken) {
+      throw new Error('Google OAuth access token is missing. Please sign in with Google.');
     }
+    const headers = ["id", "date", "origin", "destination", "distance", "duration", "fuelCost", "fuelLiters", "notes", "createdAt"];
+    const currentSheetTrips = await this.readSheetRows('Trips', headers);
+    const updatedSheetTrips = currentSheetTrips.filter(t => t.id !== id);
+    await this.writeSheetRows('Trips', headers, updatedSheetTrips);
+    this.triggerSyncChange();
   }
 
   // SERVICES OPERATIONS
   async getServices(): Promise<ServiceRecord[]> {
     if (!this.accessToken) {
-      return getLocalData<ServiceRecord[]>(STORAGE_KEYS.SERVICES, []).sort(
-        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-      );
+      return [];
     }
 
     try {
       const headers = ["id", "date", "serviceType", "cost", "currentOdometer", "nextServiceOdometer", "nextServiceDate", "notes", "status", "createdAt"];
       const services = await this.readSheetRows('Services', headers);
-      setLocalData(STORAGE_KEYS.SERVICES, services);
-      return services.sort(
+      
+      // Filter out any template/mock services
+      const filteredServices = services.filter(service => {
+        const isMockId = String(service.id).startsWith('mock') || String(service.id) === 's1' || String(service.id) === 's2';
+        const isMockNotes = service.notes && (
+          service.notes.includes('mock') || 
+          service.notes.includes('contoh') || 
+          service.notes.includes('template') || 
+          service.notes.includes('Dummy')
+        );
+        return !(isMockId || isMockNotes);
+      });
+
+      // If we filtered out some mock services, update Google Sheets to permanently delete them
+      if (filteredServices.length < services.length) {
+        await this.writeSheetRows('Services', headers, filteredServices);
+      }
+
+      return filteredServices.sort(
         (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
       );
-    } catch (e) {
-      console.warn('Google Sheets error fetching services, falling back to local', e);
+    } catch (e: any) {
+      if (e.message === 'SPREADSHEET_NOT_FOUND') {
+        throw e;
+      }
+      console.warn('Google Sheets error fetching services', e);
+      throw e;
     }
-    return getLocalData<ServiceRecord[]>(STORAGE_KEYS.SERVICES, []).sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
   }
 
   async addService(service: Omit<ServiceRecord, 'id' | 'createdAt'>): Promise<ServiceRecord> {
+    if (!this.accessToken) {
+      throw new Error('Google OAuth access token is missing. Please sign in with Google.');
+    }
     const newService: ServiceRecord = {
       ...service,
       id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2),
       createdAt: new Date().toISOString()
     };
 
-    const currentServices = getLocalData<ServiceRecord[]>(STORAGE_KEYS.SERVICES, []);
-    const updatedServices = [newService, ...currentServices].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
-    setLocalData(STORAGE_KEYS.SERVICES, updatedServices);
+    const headers = ["id", "date", "serviceType", "cost", "currentOdometer", "nextServiceOdometer", "nextServiceDate", "notes", "status", "createdAt"];
+    const currentSheetServices = await this.readSheetRows('Services', headers);
+    const updatedSheetServices = [newService, ...currentSheetServices];
+    await this.writeSheetRows('Services', headers, updatedSheetServices);
     this.triggerSyncChange();
-
-    if (this.accessToken) {
-      try {
-        const headers = ["id", "date", "serviceType", "cost", "currentOdometer", "nextServiceOdometer", "nextServiceDate", "notes", "status", "createdAt"];
-        const currentSheetServices = await this.readSheetRows('Services', headers);
-        const updatedSheetServices = [newService, ...currentSheetServices];
-        await this.writeSheetRows('Services', headers, updatedSheetServices);
-      } catch (e) {
-        console.warn('Error writing service to Google Sheets', e);
-      }
-    }
     return newService;
   }
 
   async updateService(service: ServiceRecord): Promise<void> {
-    const currentServices = getLocalData<ServiceRecord[]>(STORAGE_KEYS.SERVICES, []);
-    const updatedServices = currentServices.map(s => s.id === service.id ? service : s);
-    setLocalData(STORAGE_KEYS.SERVICES, updatedServices);
-    this.triggerSyncChange();
-
-    if (this.accessToken) {
-      try {
-        const headers = ["id", "date", "serviceType", "cost", "currentOdometer", "nextServiceOdometer", "nextServiceDate", "notes", "status", "createdAt"];
-        const currentSheetServices = await this.readSheetRows('Services', headers);
-        const updatedSheetServices = currentSheetServices.map(s => s.id === service.id ? service : s);
-        await this.writeSheetRows('Services', headers, updatedSheetServices);
-      } catch (e) {
-        console.warn('Error updating service on Google Sheets', e);
-      }
+    if (!this.accessToken) {
+      throw new Error('Google OAuth access token is missing. Please sign in with Google.');
     }
+    const headers = ["id", "date", "serviceType", "cost", "currentOdometer", "nextServiceOdometer", "nextServiceDate", "notes", "status", "createdAt"];
+    const currentSheetServices = await this.readSheetRows('Services', headers);
+    const updatedSheetServices = currentSheetServices.map(s => s.id === service.id ? service : s);
+    await this.writeSheetRows('Services', headers, updatedSheetServices);
+    this.triggerSyncChange();
   }
 
   async deleteService(id: string): Promise<void> {
-    const currentServices = getLocalData<ServiceRecord[]>(STORAGE_KEYS.SERVICES, []);
-    const updatedServices = currentServices.filter(s => s.id !== id);
-    setLocalData(STORAGE_KEYS.SERVICES, updatedServices);
-    this.triggerSyncChange();
-
-    if (this.accessToken) {
-      try {
-        const headers = ["id", "date", "serviceType", "cost", "currentOdometer", "nextServiceOdometer", "nextServiceDate", "notes", "status", "createdAt"];
-        const currentSheetServices = await this.readSheetRows('Services', headers);
-        const updatedSheetServices = currentSheetServices.filter(s => s.id !== id);
-        await this.writeSheetRows('Services', headers, updatedSheetServices);
-      } catch (e) {
-        console.warn('Error deleting service from Google Sheets', e);
-      }
+    if (!this.accessToken) {
+      throw new Error('Google OAuth access token is missing. Please sign in with Google.');
     }
+    const headers = ["id", "date", "serviceType", "cost", "currentOdometer", "nextServiceOdometer", "nextServiceDate", "notes", "status", "createdAt"];
+    const currentSheetServices = await this.readSheetRows('Services', headers);
+    const updatedSheetServices = currentSheetServices.filter(s => s.id !== id);
+    await this.writeSheetRows('Services', headers, updatedSheetServices);
+    this.triggerSyncChange();
   }
 
   // SYNC OFFLINE DRAFTS TO GOOGLE SHEETS
   async syncLocalToSheets(): Promise<void> {
-    if (!this.accessToken) return;
-
-    // 1. Sync vehicle
-    const localVehicle = getLocalData<VehicleInfo | null>(STORAGE_KEYS.VEHICLE, null);
-    if (localVehicle) {
-      try {
-        const headers = ["id", "brand", "model", "licensePlate", "currentOdometer", "fuelType", "oilInterval", "serviceInterval"];
-        await this.writeSheetRows('Vehicle', headers, [localVehicle]);
-      } catch (e) {
-        console.warn('Sync vehicle error', e);
-      }
-    }
-
-    // 2. Sync trips
-    const localTrips = getLocalData<TripRecord[]>(STORAGE_KEYS.TRIPS, []);
-    if (localTrips.length > 0) {
-      try {
-        const headers = ["id", "date", "origin", "destination", "distance", "duration", "fuelCost", "fuelLiters", "notes", "createdAt"];
-        const currentSheetTrips = await this.readSheetRows('Trips', headers);
-        const existingIds = new Set(currentSheetTrips.map(t => t.id));
-        const mergedTrips = [...currentSheetTrips];
-        
-        for (const trip of localTrips) {
-          if (!existingIds.has(trip.id)) {
-            mergedTrips.push(trip);
-          }
-        }
-        await this.writeSheetRows('Trips', headers, mergedTrips);
-      } catch (e) {
-        console.warn('Sync trips error', e);
-      }
-    }
-
-    // 3. Sync services
-    const localServices = getLocalData<ServiceRecord[]>(STORAGE_KEYS.SERVICES, []);
-    if (localServices.length > 0) {
-      try {
-        const headers = ["id", "date", "serviceType", "cost", "currentOdometer", "nextServiceOdometer", "nextServiceDate", "notes", "status", "createdAt"];
-        const currentSheetServices = await this.readSheetRows('Services', headers);
-        const existingIds = new Set(currentSheetServices.map(s => s.id));
-        const mergedServices = [...currentSheetServices];
-
-        for (const service of localServices) {
-          if (!existingIds.has(service.id)) {
-            mergedServices.push(service);
-          }
-        }
-        await this.writeSheetRows('Services', headers, mergedServices);
-      } catch (e) {
-        console.warn('Sync services error', e);
-      }
-    }
-
+    // 100% online real-time. No local storage caching or synchronization is needed.
     this.triggerSyncChange();
   }
 

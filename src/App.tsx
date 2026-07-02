@@ -45,7 +45,8 @@ import {
   ChevronRight,
   Sparkles,
   Info,
-  Settings
+  Settings,
+  Database
 } from 'lucide-react';
 
 export default function App() {
@@ -819,6 +820,90 @@ export default function App() {
             onCancel={() => setShowBiometricOverlay(false)}
           />
         )}
+      </div>
+    );
+  }
+
+  if (user && !accessToken) {
+    return (
+      <div className="min-h-screen bg-[#f7f9fa] dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
+        
+        {/* Top Utility Indicator Bar */}
+        <div className="bg-white dark:bg-slate-900 border-b border-gray-100 dark:border-slate-800 text-xs py-2 px-4 flex justify-between items-center z-10 transition-colors">
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1.5 text-green-600 dark:text-green-400 font-semibold">
+              <Wifi className="w-3.5 h-3.5" />
+              Online
+            </span>
+          </div>
+          <div className="flex items-center gap-4">
+            <button
+              id="theme-toggle-btn-unconnected"
+              onClick={() => setDarkMode(!darkMode)}
+              className="p-1.5 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg text-gray-500 dark:text-slate-400 transition"
+            >
+              {darkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-600" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Header */}
+        <header className="traveloka-gradient text-white py-5 px-4 sm:px-6 shadow-md transition-all">
+          <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-white/10 rounded-2xl border border-white/20 shadow-inner">
+                <Car className="w-8 h-8 text-white stroke-[2.5]" />
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-extrabold text-2xl tracking-tight leading-none uppercase">DEMOR</span>
+                  <span className="bg-[#ff5e1f] text-white text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md tracking-wider leading-none shadow-sm shadow-orange-700/30">
+                    AUTO
+                  </span>
+                </div>
+                <p className="text-xs text-white/80 font-medium mt-1">Armada mobil mandiri, BBM & Jadwal Servis Rutin Terkendali</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <button
+                id="logout-btn-unconnected"
+                onClick={handleLogout}
+                className="p-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-white transition font-bold text-xs px-3 py-1.5"
+              >
+                Keluar
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {/* Center prompt */}
+        <main className="flex-1 flex items-center justify-center p-4">
+          <div className="max-w-md w-full bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl p-8 text-center space-y-6 shadow-lg">
+            <div className="inline-flex p-4 bg-amber-500/10 rounded-2xl text-amber-500">
+              <Database className="w-12 h-12" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100">Koneksi Google Sheets Diperlukan</h3>
+              <p className="text-xs text-gray-500 dark:text-slate-400 leading-relaxed">
+                Aplikasi ini berjalan 100% online real-time. Hubungkan akun Google Drive & Sheets Anda untuk membuat dan mengelola database armada mobil, BBM, dan jadwal servis secara aman.
+              </p>
+            </div>
+            {authError && (
+              <div className="p-3 bg-red-50 dark:bg-red-950/20 text-red-600 border border-red-100 dark:border-red-900/40 rounded-xl text-xs font-semibold text-left">
+                ⚠️ {authError}
+              </div>
+            )}
+            <button
+              onClick={handleGoogleLogin}
+              disabled={isGoogleLoggingIn}
+              className="w-full py-3 px-4 bg-[#0194f3] hover:bg-[#007cd1] text-white rounded-xl font-bold transition text-sm flex items-center justify-center gap-2 shadow-md shadow-blue-500/15 cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isGoogleLoggingIn ? 'animate-spin' : ''}`} />
+              {isGoogleLoggingIn ? 'Menghubungkan...' : 'Hubungkan Google Sheets'}
+            </button>
+          </div>
+        </main>
       </div>
     );
   }
@@ -2111,16 +2196,16 @@ export default function App() {
                 )}
               </div>
 
-              {/* Offline mode instruction list */}
+              {/* Real-time Sheets instruction list */}
               <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-gray-100 dark:border-slate-800 shadow-sm text-xs space-y-3 h-fit">
                 <div className="flex items-center gap-2 text-gray-500 dark:text-slate-400">
-                  <Info className="w-4 h-4 text-gray-400" />
-                  <h5 className="font-extrabold uppercase tracking-wide text-gray-700 dark:text-slate-300">Cara Kerja Mode Offline & Sheets</h5>
+                  <Info className="w-4 h-4 text-[#0194f3]" />
+                  <h5 className="font-extrabold uppercase tracking-wide text-gray-700 dark:text-slate-300">Sistem Database Real-Time</h5>
                 </div>
                 <ul className="list-disc pl-4 space-y-1.5 text-gray-500 dark:text-slate-400 font-medium">
-                  <li>Aplikasi akan otomatis mendeteksi koneksi internet Anda.</li>
-                  <li>Jika offline, seluruh rute perjalanan, BBM, dan jadwal servis baru Anda disimpan sementara di memori perangkat.</li>
-                  <li>Ketika koneksi internet terhubung kembali dan Google Sheets terhubung, aplikasi secara otomatis menyinkronkan data Anda ke spreadsheet <strong>Demor_Auto_Database</strong>.</li>
+                  <li>Aplikasi ini berjalan secara 100% online dan terhubung langsung ke Google Sheets Anda.</li>
+                  <li>Setiap perubahan pada data armada, catatan BBM, rute perjalanan, dan servis berkala disimpan langsung secara real-time ke spreadsheet <strong className="text-[#0194f3]">Demor_Auto_Database</strong>.</li>
+                  <li>Data Anda sepenuhnya mandiri, aman, dan dapat diakses langsung kapan saja melalui Google Drive Anda.</li>
                 </ul>
               </div>
 
